@@ -337,7 +337,7 @@ def _compare_args_orderless(first_args, second_args):
         return False
     return not t
 
-def _remove_dups_flatten(parameters):
+def _remove_dups_flatten_union(parameters):
     """Internal helper for Union creation and substitution.
 
     Flatten Unions among parameters, then remove duplicates.
@@ -351,6 +351,22 @@ def _remove_dups_flatten(parameters):
             params.append(p)
 
     return tuple(_deduplicate(params, unhashable_fallback=True))
+
+
+def _remove_dups_flatten_intersection(parameters):
+    """Internal helper for Intersection creation and substitution.
+
+    Flatten Intersections among parameters, then remove duplicates.
+    """
+    # Flatten out Intersection[Intersection[...], ...].
+    params = []
+    for p in parameters:
+        if isinstance(p, (_IntersectionGenericAlias, types.IntersectionType)):
+            params.extend(p.__args__)
+        else:
+            params.append(p)
+
+    return tuple(_deduplicate(params))
 
 
 def _flatten_literal_params(parameters):
@@ -493,6 +509,12 @@ class _SpecialForm(_Final, _NotIterable, _root=True):
 
     def __ror__(self, other):
         return Union[other, self]
+
+    def __and__(self, other):
+        return Intersection[self, other]
+
+    def __rand__(self, other):
+        return Intersection[other, self]
 
     def __instancecheck__(self, obj):
         raise TypeError(f"{self} cannot be used with isinstance()")
@@ -716,7 +738,7 @@ def Union(self, parameters):
         parameters = (parameters,)
     msg = "Union[arg, ...]: each arg must be a type."
     parameters = tuple(_type_check(p, msg) for p in parameters)
-    parameters = _remove_dups_flatten(parameters)
+    parameters = _remove_dups_flatten_union(parameters)
     if len(parameters) == 1:
         return parameters[0]
     if len(parameters) == 2 and type(None) in parameters:
@@ -731,6 +753,47 @@ def _make_union(left, right):
     (forward references).
     """
     return Union[left, right]
+
+@_SpecialForm
+def Intersection(self, parameters):
+    """Intersection type; Intersection[X, Y] means both X and Y.
+
+    On Python 3.XX and higher, the & operator
+    can also be used to denote intersections;
+    X & Y means the same thing to the type checker as Intersection[X, Y].
+
+    To define an intersection, use e.g. Intersection[int, str]. Details:
+    - The arguments must be types and there must be at least one.
+    - None as an argument is a special case and is replaced by
+      type(None).
+    - Intersections of intersections are flattened, e.g.::
+
+        assert Intersection[Intersection[int, str], float] == Intersection[int, str, float]
+
+    - Intersections of a single argument vanish, e.g.::
+
+        assert Intersection[int] == int  # The constructor actually returns int
+
+    - Redundant arguments are skipped, e.g.::
+
+        assert Intersection[int, str, int] == Intersection[int, str]
+
+    - When comparing intersections, the argument order is ignored, e.g.::
+
+        assert Intersection[int, str] == Intersection[str, int]
+
+    - You cannot subclass or instantiate an intersection.
+    """
+    if parameters == ():
+        raise TypeError("Cannot take a Intersection of no types.")
+    if not isinstance(parameters, tuple):
+        parameters = (parameters,)
+    msg = "Intersection[arg, ...]: each arg must be a type."
+    parameters = tuple(_type_check(p, msg) for p in parameters)
+    parameters = _remove_dups_flatten_intersection(parameters)
+    if len(parameters) == 1:
+        return parameters[0]
+    return _IntersectionGenericAlias(self, parameters)
 
 @_SpecialForm
 def Optional(self, parameters):
@@ -941,6 +1004,12 @@ class ForwardRef(_Final, _root=True):
 
     def __ror__(self, other):
         return Union[other, self]
+
+    def __and__(self, other):
+        return Intersection[self, other]
+
+    def __rand__(self, other):
+        return Intersection[other, self]
 
     def __repr__(self):
         if self.__forward_module__ is None:
@@ -1269,6 +1338,12 @@ class _GenericAlias(_BaseGenericAlias, _root=True):
     def __ror__(self, left):
         return Union[left, self]
 
+    def __and__(self, other):
+        return Intersection[self, other]
+
+    def __rand__(self, other):
+        return Intersection[other, self]
+
     @_tp_cache
     def __getitem__(self, args):
         # Parameterizes an already-parameterized object.
@@ -1483,6 +1558,11 @@ class _SpecialGenericAlias(_NotIterable, _BaseGenericAlias, _root=True):
     def __ror__(self, left):
         return Union[left, self]
 
+    def __and__(self, other):
+        return Intersection[self, other]
+
+    def __rand__(self, other):
+        return Intersection[other, self]
 
 class _DeprecatedGenericAlias(_SpecialGenericAlias, _root=True):
     def __init__(
@@ -1598,6 +1678,34 @@ class _UnionGenericAlias(_NotIterable, _GenericAlias, _root=True):
     def __reduce__(self):
         func, (origin, args) = super().__reduce__()
         return func, (Union, args)
+
+
+class _IntersectionGenericAlias(_NotIterable, _GenericAlias, _root=True):
+    def copy_with(self, params):
+        return Intersection[params]
+
+    def __eq__(self, other):
+        if not isinstance(other, (_IntersectionGenericAlias, types.IntersectionType)):
+            return NotImplemented
+        return set(self.__args__) == set(other.__args__)
+
+    def __hash__(self):
+        return hash(frozenset(self.__args__))
+
+    def __repr__(self):
+        return super().__repr__()
+
+    def __instancecheck__(self, obj):
+        return self.__subclasscheck__(type(obj))
+
+    def __subclasscheck__(self, cls):
+        for arg in self.__args__:
+            if issubclass(cls, arg):
+                return True
+
+    def __reduce__(self):
+        func, (origin, args) = super().__reduce__()
+        return func, (Intersection, args)
 
 
 def _value_and_type_iter(parameters):
@@ -3255,6 +3363,11 @@ class NewType:
     def __ror__(self, other):
         return Union[other, self]
 
+    def __and__(self, other):
+        return Intersection[self, other]
+
+    def __rand__(self, other):
+        return Intersection[other, self]
 
 # Python-version-specific alias (Python 2: unicode; Python 3: str)
 Text = str

@@ -7,6 +7,7 @@
 #include "pycore_dict.h"          // _PyDict_KeysSize()
 #include "pycore_frame.h"         // _PyInterpreterFrame
 #include "pycore_lock.h"          // _PySeqLock_*
+#include "pycore_intersectionobject.h"  // _Py_intersection_type_and
 #include "pycore_long.h"          // _PyLong_IsNegative()
 #include "pycore_memoryobject.h"  // _PyMemoryView_FromBufferProc()
 #include "pycore_modsupport.h"    // _PyArg_NoKwnames()
@@ -5669,6 +5670,7 @@ type_is_gc(PyObject *type)
 
 static PyNumberMethods type_as_number = {
         .nb_or = _Py_union_type_or, // Add __or__ function
+        .nb_and = _Py_intersection_type_and, // Add __and__ function
 };
 
 PyTypeObject PyType_Type = {

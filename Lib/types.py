@@ -326,6 +326,7 @@ def coroutine(func):
 
 GenericAlias = type(list[int])
 UnionType = type(int | str)
+IntersectionType = type(int & str)
 
 EllipsisType = type(Ellipsis)
 NoneType = type(None)

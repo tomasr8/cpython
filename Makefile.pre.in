@@ -530,6 +530,7 @@ OBJECT_OBJS=	\
 		Objects/unicodeobject.o \
 		Objects/unicodectype.o \
 		Objects/unionobject.o \
+		Objects/intersectionobject.o \
 		Objects/weakrefobject.o \
 		@PERF_TRAMPOLINE_OBJ@
 
