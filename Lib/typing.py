@@ -1671,9 +1671,7 @@ class _UnionGenericAlias(_NotIterable, _GenericAlias, _root=True):
         return self.__subclasscheck__(type(obj))
 
     def __subclasscheck__(self, cls):
-        for arg in self.__args__:
-            if issubclass(cls, arg):
-                return True
+        return all(issubclass(cls, arg) for arg in self.__args__)
 
     def __reduce__(self):
         func, (origin, args) = super().__reduce__()

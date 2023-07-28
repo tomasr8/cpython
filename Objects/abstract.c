@@ -11,6 +11,7 @@
 #include "pycore_pyerrors.h"      // _PyErr_Occurred()
 #include "pycore_pystate.h"       // _PyThreadState_GET()
 #include "pycore_unionobject.h"   // _PyUnion_Check()
+#include "pycore_intersectionobject.h"   // _PyIntersection_Check()
 
 #include <stddef.h>               // offsetof()
 
@@ -2683,8 +2684,11 @@ object_recursive_isinstance(PyThreadState *tstate, PyObject *inst, PyObject *cls
         return object_isinstance(inst, cls);
     }
 
+    bool is_intersection = _PyIntersection_Check(cls);
     if (_PyUnion_Check(cls)) {
         cls = _Py_union_args(cls);
+    } else if(_PyIntersection_Check(cls)) {
+        cls = _Py_intersection_args(cls);
     }
 
     if (PyTuple_Check(cls)) {
@@ -2698,7 +2702,9 @@ object_recursive_isinstance(PyThreadState *tstate, PyObject *inst, PyObject *cls
         for (Py_ssize_t i = 0; i < n; ++i) {
             PyObject *item = PyTuple_GET_ITEM(cls, i);
             r = object_recursive_isinstance(tstate, inst, item);
-            if (r != 0) {
+            if (is_intersection && r == 0) {
+                break;
+            } else if (!is_intersection && r != 0) {
                 /* either found it, or got an error */
                 break;
             }
@@ -2754,7 +2760,7 @@ recursive_issubclass(PyObject *derived, PyObject *cls)
                      "issubclass() arg 1 must be a class"))
         return -1;
 
-    if (!_PyUnion_Check(cls) && !check_class(cls,
+    if (!_PyUnion_Check(cls) && !_PyIntersection_Check(cls) && !check_class(cls,
                             "issubclass() arg 2 must be a class,"
                             " a tuple of classes, or a union")) {
         return -1;
@@ -2776,8 +2782,11 @@ object_issubclass(PyThreadState *tstate, PyObject *derived, PyObject *cls)
         return recursive_issubclass(derived, cls);
     }
 
+    bool is_intersection = _PyIntersection_Check(cls);
     if (_PyUnion_Check(cls)) {
         cls = _Py_union_args(cls);
+    } else if(_PyIntersection_Check(cls)) {
+        cls = _Py_intersection_args(cls);
     }
 
     if (PyTuple_Check(cls)) {
@@ -2790,9 +2799,12 @@ object_issubclass(PyThreadState *tstate, PyObject *derived, PyObject *cls)
         for (Py_ssize_t i = 0; i < n; ++i) {
             PyObject *item = PyTuple_GET_ITEM(cls, i);
             r = object_issubclass(tstate, derived, item);
-            if (r != 0)
+            if (is_intersection && r == 0) {
+                break;
+            } else if (!is_intersection && r != 0) {
                 /* either found it, or got an error */
                 break;
+            }
         }
         _Py_LeaveRecursiveCallTstate(tstate);
         return r;
