@@ -54,6 +54,11 @@
 
  */
 
+/*[clinic input]
+module _ctypes
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=476a19c49b31a75c]*/
+
 #ifndef Py_BUILD_CORE_BUILTIN
 #  define Py_BUILD_CORE_MODULE 1
 #endif
@@ -98,6 +103,7 @@
 
 #include "pycore_runtime.h"         // _PyRuntime
 #include "pycore_global_objects.h"  // _Py_ID()
+#include "clinic/callproc.c.h"
 
 #define CTYPES_CAPSULE_NAME_PYMEM "_ctypes pymem"
 
@@ -1809,19 +1815,23 @@ My_Py_DECREF(PyObject *self, PyObject *arg)
     return arg;
 }
 
+/*[clinic input]
+_ctypes.resize
+
+    obj: object
+    size: Py_ssize_t
+
+Resize the memory buffer of a ctypes instance
+[clinic start generated code]*/
+
 static PyObject *
-resize(PyObject *self, PyObject *args)
+_ctypes_resize_impl(PyObject *module, PyObject *obj, Py_ssize_t size)
+/*[clinic end generated code: output=bc4ef11c33bb7900 input=8500352eab12e1a4]*/
 {
-    CDataObject *obj;
+    CDataObject *cdata = (CDataObject *)obj;
     StgDictObject *dict;
-    Py_ssize_t size;
 
-    if (!PyArg_ParseTuple(args,
-                          "On:resize",
-                          &obj, &size))
-        return NULL;
-
-    dict = PyObject_stgdict((PyObject *)obj);
+    dict = PyObject_stgdict(obj);
     if (dict == NULL) {
         PyErr_SetString(PyExc_TypeError,
                         "expected ctypes instance");
@@ -1833,31 +1843,31 @@ resize(PyObject *self, PyObject *args)
                      dict->size);
         return NULL;
     }
-    if (obj->b_needsfree == 0) {
+    if (cdata->b_needsfree == 0) {
         PyErr_Format(PyExc_ValueError,
                      "Memory cannot be resized because this object doesn't own it");
         return NULL;
     }
-    if ((size_t)size <= sizeof(obj->b_value)) {
+    if ((size_t)size <= sizeof(cdata->b_value)) {
         /* internal default buffer is large enough */
-        obj->b_size = size;
+        cdata->b_size = size;
         goto done;
     }
-    if (!_CDataObject_HasExternalBuffer(obj)) {
+    if (!_CDataObject_HasExternalBuffer(cdata)) {
         /* We are currently using the objects default buffer, but it
            isn't large enough any more. */
         void *ptr = PyMem_Calloc(1, size);
         if (ptr == NULL)
             return PyErr_NoMemory();
-        memmove(ptr, obj->b_ptr, obj->b_size);
-        obj->b_ptr = ptr;
-        obj->b_size = size;
+        memmove(ptr, cdata->b_ptr, cdata->b_size);
+        cdata->b_ptr = ptr;
+        cdata->b_size = size;
     } else {
-        void * ptr = PyMem_Realloc(obj->b_ptr, size);
+        void * ptr = PyMem_Realloc(cdata->b_ptr, size);
         if (ptr == NULL)
             return PyErr_NoMemory();
-        obj->b_ptr = ptr;
-        obj->b_size = size;
+        cdata->b_ptr = ptr;
+        cdata->b_size = size;
     }
   done:
     Py_RETURN_NONE;
@@ -2001,7 +2011,8 @@ PyMethodDef _ctypes_module_methods[] = {
     {"pointer", pointer, METH_O },
     {"_unpickle", unpickle, METH_VARARGS },
     {"buffer_info", buffer_info, METH_O, "Return buffer interface information"},
-    {"resize", resize, METH_VARARGS, "Resize the memory buffer of a ctypes instance"},
+    // {"resize", resize, METH_VARARGS, "Resize the memory buffer of a ctypes instance"},
+    _CTYPES_RESIZE_METHODDEF
 #ifdef MS_WIN32
     {"get_last_error", get_last_error, METH_NOARGS},
     {"set_last_error", set_last_error, METH_VARARGS},
