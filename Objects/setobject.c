@@ -528,6 +528,7 @@ static PyObject *
 set_repr(PySetObject *so)
 {
     PyObject *result=NULL, *keys, *listrepr, *tmp;
+    Py_BEGIN_CRITICAL_SECTION(so);
     int status = Py_ReprEnter((PyObject*)so);
 
     if (status != 0) {
@@ -566,13 +567,14 @@ set_repr(PySetObject *so)
     Py_DECREF(listrepr);
 done:
     Py_ReprLeave((PyObject*)so);
+    Py_END_CRITICAL_SECTION();
     return result;
 }
 
 static Py_ssize_t
-set_len(PyObject *so)
+set_len(PySetObject *so)
 {
-    return ((PySetObject *)so)->used;
+    return _Py_atomic_load_ssize_relaxed(&so->used);
 }
 
 static int
@@ -2042,7 +2044,7 @@ set_vectorcall(PyObject *type, PyObject * const*args,
 }
 
 static PySequenceMethods set_as_sequence = {
-    set_len,                            /* sq_length */
+    (lenfunc)set_len,                            /* sq_length */
     0,                                  /* sq_concat */
     0,                                  /* sq_repeat */
     0,                                  /* sq_item */
