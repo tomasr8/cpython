@@ -1803,6 +1803,7 @@ set_issubset(PySetObject *so, PyObject *other)
 {
     setentry *entry;
     Py_ssize_t pos = 0;
+    PyObject *ret = Py_True;
     int rv;
 
     if (!PyAnySet_Check(other)) {
@@ -1814,8 +1815,10 @@ set_issubset(PySetObject *so, PyObject *other)
         Py_DECREF(tmp);
         return PyBool_FromLong(result);
     }
+
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
     if (PySet_GET_SIZE(so) > PySet_GET_SIZE(other))
-        Py_RETURN_FALSE;
+        ret = Py_False;
 
     while (set_next(so, &pos, &entry)) {
         PyObject *key = entry->key;
@@ -1823,13 +1826,16 @@ set_issubset(PySetObject *so, PyObject *other)
         rv = set_contains_entry((PySetObject *)other, key, entry->hash);
         Py_DECREF(key);
         if (rv < 0) {
-            return NULL;
+            ret = NULL;
+            break;
         }
         if (!rv) {
-            Py_RETURN_FALSE;
+            ret = Py_False;
+            break;
         }
     }
-    Py_RETURN_TRUE;
+    Py_END_CRITICAL_SECTION2();
+    return ret;
 }
 
 PyDoc_STRVAR(issubset_doc, "Report whether another set contains this set.");
@@ -1845,23 +1851,27 @@ set_issuperset(PySetObject *so, PyObject *other)
     if (it == NULL) {
         return NULL;
     }
+
+    PyObject *ret = Py_True;
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
     while ((key = PyIter_Next(it)) != NULL) {
         int rv = set_contains_key(so, key);
         Py_DECREF(key);
         if (rv < 0) {
-            Py_DECREF(it);
-            return NULL;
+            ret = NULL;
+            break;
         }
         if (!rv) {
-            Py_DECREF(it);
-            Py_RETURN_FALSE;
+            ret = Py_False;
+            break;
         }
     }
+    Py_END_CRITICAL_SECTION2();
     Py_DECREF(it);
     if (PyErr_Occurred()) {
         return NULL;
     }
-    Py_RETURN_TRUE;
+    return ret;
 }
 
 PyDoc_STRVAR(issuperset_doc, "Report whether this set contains another set.");
