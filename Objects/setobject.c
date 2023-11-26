@@ -1794,21 +1794,34 @@ PyDoc_STRVAR(symmetric_difference_update_doc,
 Update the set, keeping only elements found in either set, but not in both.");
 
 static PyObject *
+set_symmetric_difference_update_with_lock(PySetObject *so, PyObject *other) {
+    PyObject *result;
+
+    Py_BEGIN_CRITICAL_SECTION(so);
+    result = set_symmetric_difference_update(so, other);
+    Py_END_CRITICAL_SECTION();
+    return result;
+}
+
+static PyObject *
 set_symmetric_difference(PySetObject *so, PyObject *other)
 {
-    PyObject *rv;
+    PyObject *rv = NULL;
     PySetObject *otherset;
 
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
     otherset = (PySetObject *)make_new_set_basetype(Py_TYPE(so), other);
     if (otherset == NULL)
-        return NULL;
+        goto exit;
     rv = set_symmetric_difference_update(otherset, (PyObject *)so);
     if (rv == NULL) {
         Py_DECREF(otherset);
-        return NULL;
+    } else {
+        Py_DECREF(rv);
     }
-    Py_DECREF(rv);
-    return (PyObject *)otherset;
+exit:
+    Py_END_CRITICAL_SECTION2();
+    return rv == NULL ? NULL : (PyObject *)otherset;
 }
 
 PyDoc_STRVAR(symmetric_difference_doc,
@@ -2203,7 +2216,7 @@ static PyMethodDef set_methods[] = {
      sizeof_doc},
     {"symmetric_difference",(PyCFunction)set_symmetric_difference,      METH_O,
      symmetric_difference_doc},
-    {"symmetric_difference_update",(PyCFunction)set_symmetric_difference_update,        METH_O,
+    {"symmetric_difference_update",(PyCFunction)set_symmetric_difference_update_with_lock,        METH_O,
      symmetric_difference_update_doc},
     {"union",           (PyCFunction)set_union,         METH_VARARGS,
      union_doc},
