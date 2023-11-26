@@ -1993,22 +1993,33 @@ static PyObject *
 set_discard(PySetObject *so, PyObject *key)
 {
     PyObject *tmpkey;
+    PyObject *result = Py_None;   
     int rv;
 
+    Py_BEGIN_CRITICAL_SECTION(so);
     rv = set_discard_key(so, key);
     if (rv < 0) {
-        if (!PySet_Check(key) || !PyErr_ExceptionMatches(PyExc_TypeError))
-            return NULL;
+        if (!PySet_Check(key) || !PyErr_ExceptionMatches(PyExc_TypeError)) {
+            result = NULL;
+            goto exit;
+        }
         PyErr_Clear();
         tmpkey = make_new_set(&PyFrozenSet_Type, key);
-        if (tmpkey == NULL)
-            return NULL;
+        if (tmpkey == NULL) {
+            result = NULL;
+            goto exit;
+        }
         rv = set_discard_key(so, tmpkey);
         Py_DECREF(tmpkey);
-        if (rv < 0)
-            return NULL;
+        if (rv < 0) {
+            result = NULL;
+            goto exit;
+        }
     }
-    Py_RETURN_NONE;
+
+exit:
+    Py_END_CRITICAL_SECTION();
+    return result;
 }
 
 PyDoc_STRVAR(discard_doc,
