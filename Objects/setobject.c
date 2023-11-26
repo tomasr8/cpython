@@ -32,13 +32,14 @@
 */
 
 #include "Python.h"
-#include "pycore_ceval.h"         // _PyEval_GetBuiltin()
-#include "pycore_dict.h"          // _PyDict_Contains_KnownHash()
-#include "pycore_modsupport.h"    // _PyArg_NoKwnames()
-#include "pycore_object.h"        // _PyObject_GC_UNTRACK()
-#include "pycore_pyerrors.h"      // _PyErr_SetKeyError()
-#include "pycore_setobject.h"     // _PySet_NextEntry() definition
-#include <stddef.h>               // offsetof()
+#include "pycore_ceval.h"            // _PyEval_GetBuiltin()
+#include "pycore_critical_section.h" // Py_BEGIN_CRITICAL_SECTION, Py_END_CRITICAL_SECTION
+#include "pycore_dict.h"             // _PyDict_Contains_KnownHash()
+#include "pycore_modsupport.h"       // _PyArg_NoKwnames()
+#include "pycore_object.h"           // _PyObject_GC_UNTRACK()
+#include "pycore_pyerrors.h"         // _PyErr_SetKeyError()
+#include "pycore_setobject.h"        // _PySet_NextEntry() definition
+#include <stddef.h>                  // offsetof()
 
 /* Object used as dummy key to fill deleted entries */
 static PyObject _dummy_struct;
@@ -348,6 +349,7 @@ set_discard_entry(PySetObject *so, PyObject *key, Py_hash_t hash)
 static int
 set_add_key(PySetObject *so, PyObject *key)
 {
+    int rv;
     Py_hash_t hash;
 
     if (!PyUnicode_CheckExact(key) ||
@@ -356,12 +358,17 @@ set_add_key(PySetObject *so, PyObject *key)
         if (hash == -1)
             return -1;
     }
-    return set_add_entry(so, key, hash);
+
+    Py_BEGIN_CRITICAL_SECTION(so);
+    rv = set_add_entry(so, key, hash);
+    Py_END_CRITICAL_SECTION();
+    return rv;
 }
 
 static int
 set_contains_key(PySetObject *so, PyObject *key)
 {
+    int rv;
     Py_hash_t hash;
 
     if (!PyUnicode_CheckExact(key) ||
@@ -370,12 +377,17 @@ set_contains_key(PySetObject *so, PyObject *key)
         if (hash == -1)
             return -1;
     }
-    return set_contains_entry(so, key, hash);
+
+    Py_BEGIN_CRITICAL_SECTION(so);
+    rv = set_contains_entry(so, key, hash);
+    Py_END_CRITICAL_SECTION();
+    return rv;
 }
 
 static int
 set_discard_key(PySetObject *so, PyObject *key)
 {
+    int rv;
     Py_hash_t hash;
 
     if (!PyUnicode_CheckExact(key) ||
@@ -384,7 +396,11 @@ set_discard_key(PySetObject *so, PyObject *key)
         if (hash == -1)
             return -1;
     }
-    return set_discard_entry(so, key, hash);
+
+    Py_BEGIN_CRITICAL_SECTION(so);
+    rv = set_discard_entry(so, key, hash);
+    Py_END_CRITICAL_SECTION();
+    return rv;
 }
 
 static void
