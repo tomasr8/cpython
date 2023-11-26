@@ -1152,7 +1152,12 @@ set_swap_bodies(PySetObject *a, PySetObject *b)
 static PyObject *
 set_copy(PySetObject *so, PyObject *Py_UNUSED(ignored))
 {
-    return make_new_set_basetype(Py_TYPE(so), (PyObject *)so);
+    PyObject *newset;
+
+    Py_BEGIN_CRITICAL_SECTION(so);
+    newset = make_new_set_basetype(Py_TYPE(so), (PyObject *)so);
+    Py_END_CRITICAL_SECTION();
+    return newset;
 }
 
 static PyObject *
@@ -1169,7 +1174,9 @@ PyDoc_STRVAR(copy_doc, "Return a shallow copy of a set.");
 static PyObject *
 set_clear(PySetObject *so, PyObject *Py_UNUSED(ignored))
 {
+    Py_BEGIN_CRITICAL_SECTION(so);
     set_clear_internal(so);
+    Py_END_CRITICAL_SECTION();
     Py_RETURN_NONE;
 }
 
@@ -1940,7 +1947,9 @@ set_direct_contains(PySetObject *so, PyObject *key)
 {
     long result;
 
+    Py_BEGIN_CRITICAL_SECTION(so);
     result = set_contains(so, key);
+    Py_END_CRITICAL_SECTION();
     if (result < 0)
         return NULL;
     return PyBool_FromLong(result);
