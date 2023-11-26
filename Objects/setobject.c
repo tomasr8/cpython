@@ -700,14 +700,15 @@ exit:
 static PyObject *
 set_pop(PySetObject *so, PyObject *Py_UNUSED(ignored))
 {
+    Py_BEGIN_CRITICAL_SECTION(so);
     /* Make sure the search finger is in bounds */
     setentry *entry = so->table + (so->finger & so->mask);
     setentry *limit = so->table + so->mask;
-    PyObject *key;
+    PyObject *key = NULL;
 
     if (so->used == 0) {
         PyErr_SetString(PyExc_KeyError, "pop from an empty set");
-        return NULL;
+        goto exit;
     }
     while (entry->key == NULL || entry->key==dummy) {
         entry++;
@@ -719,6 +720,9 @@ set_pop(PySetObject *so, PyObject *Py_UNUSED(ignored))
     entry->hash = -1;
     so->used--;
     so->finger = entry - so->table + 1;   /* next place to start */
+
+exit:
+    Py_END_CRITICAL_SECTION();
     return key;
 }
 
@@ -2009,6 +2013,7 @@ set_reduce(PySetObject *so, PyObject *Py_UNUSED(ignored))
 {
     PyObject *keys=NULL, *args=NULL, *result=NULL, *state=NULL;
 
+    Py_BEGIN_CRITICAL_SECTION(so);
     keys = PySequence_List((PyObject *)so);
     if (keys == NULL)
         goto done;
@@ -2020,6 +2025,7 @@ set_reduce(PySetObject *so, PyObject *Py_UNUSED(ignored))
         goto done;
     result = PyTuple_Pack(3, Py_TYPE(so), args, state);
 done:
+    Py_END_CRITICAL_SECTION();
     Py_XDECREF(args);
     Py_XDECREF(keys);
     Py_XDECREF(state);
@@ -2029,10 +2035,12 @@ done:
 static PyObject *
 set_sizeof(PySetObject *so, PyObject *Py_UNUSED(ignored))
 {
+    Py_BEGIN_CRITICAL_SECTION(so);
     size_t res = _PyObject_SIZE(Py_TYPE(so));
     if (so->table != so->smalltable) {
         res += ((size_t)so->mask + 1) * sizeof(setentry);
     }
+    Py_END_CRITICAL_SECTION();
     return PyLong_FromSize_t(res);
 }
 
