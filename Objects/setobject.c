@@ -1333,16 +1333,19 @@ set_intersection_multi(PySetObject *so, PyObject *args)
     if (PyTuple_GET_SIZE(args) == 0)
         return set_copy(so, NULL);
 
+    Py_BEGIN_CRITICAL_SECTION(so);
     PyObject *result = Py_NewRef(so);
     for (i=0 ; i<PyTuple_GET_SIZE(args) ; i++) {
         PyObject *other = PyTuple_GET_ITEM(args, i);
         PyObject *newresult = set_intersection((PySetObject *)result, other);
         if (newresult == NULL) {
             Py_DECREF(result);
-            return NULL;
+            result = NULL;
+            break;
         }
         Py_SETREF(result, newresult);
     }
+    Py_END_CRITICAL_SECTION();
     return result;
 }
 
@@ -1373,7 +1376,9 @@ set_intersection_update_multi(PySetObject *so, PyObject *args)
     tmp = set_intersection_multi(so, args);
     if (tmp == NULL)
         return NULL;
+    Py_BEGIN_CRITICAL_SECTION2(so, tmp);
     set_swap_bodies(so, (PySetObject *)tmp);
+    Py_END_CRITICAL_SECTION2();
     Py_DECREF(tmp);
     Py_RETURN_NONE;
 }
