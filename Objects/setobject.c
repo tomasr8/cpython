@@ -1594,8 +1594,12 @@ set_copy_and_difference(PySetObject *so, PyObject *other)
     result = set_copy(so, NULL);
     if (result == NULL)
         return NULL;
-    if (set_difference_update_internal((PySetObject *) result, other) == 0)
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
+    int rv = set_difference_update_internal((PySetObject *) result, other); 
+    Py_END_CRITICAL_SECTION2();
+    if (rv == 0) {
         return result;
+    }
     Py_DECREF(result);
     return NULL;
 }
@@ -1611,7 +1615,7 @@ set_difference(PySetObject *so, PyObject *other)
     int rv;
 
     if (PyAnySet_Check(other)) {
-        other_size = PySet_GET_SIZE(other);
+        other_size = set_len((PySetObject *)other);
     }
     else if (PyDict_CheckExact(other)) {
         other_size = PyDict_GET_SIZE(other);
@@ -1622,7 +1626,7 @@ set_difference(PySetObject *so, PyObject *other)
 
     /* If len(so) much more than len(other), it's more efficient to simply copy
      * so and then iterate other looking for common elements. */
-    if ((PySet_GET_SIZE(so) >> 2) > other_size) {
+    if ((set_len(so) >> 2) > other_size) {
         return set_copy_and_difference(so, other);
     }
 
