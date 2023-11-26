@@ -580,6 +580,7 @@ set_len(PySetObject *so)
 static int
 set_merge(PySetObject *so, PyObject *otherset)
 {
+    int rv = 0;
     PySetObject *other;
     PyObject *key;
     Py_ssize_t i;
@@ -590,16 +591,25 @@ set_merge(PySetObject *so, PyObject *otherset)
     assert (PyAnySet_Check(otherset));
 
     other = (PySetObject*)otherset;
-    if (other == so || other->used == 0)
-        /* a.update(a) or a.update(set()); nothing to do */
+    if (other == so)
+        /* a.update(a); nothing to do */
         return 0;
+
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
+    if (other->used == 0) {
+        /* a.update(set()); nothing to do */
+        goto exit;
+    }
+
     /* Do one big resize at the start, rather than
      * incrementally resizing as we insert new keys.  Expect
      * that there will be no (or few) overlapping keys.
      */
     if ((so->fill + other->used)*5 >= so->mask*3) {
-        if (set_table_resize(so, (so->used + other->used)*2) != 0)
-            return -1;
+        if (set_table_resize(so, (so->used + other->used)*2) != 0) {
+            rv = -1;
+            goto exit;
+        }
     }
     so_entry = so->table;
     other_entry = other->table;
@@ -617,7 +627,7 @@ set_merge(PySetObject *so, PyObject *otherset)
         }
         so->fill = other->fill;
         so->used = other->used;
-        return 0;
+        goto exit;
     }
 
     /* If our table is empty, we can use set_insert_clean() */
@@ -633,7 +643,7 @@ set_merge(PySetObject *so, PyObject *otherset)
                                  other_entry->hash);
             }
         }
-        return 0;
+        goto exit;
     }
 
     /* We can't assure there are no duplicates, so do normal insertions */
@@ -641,11 +651,50 @@ set_merge(PySetObject *so, PyObject *otherset)
         other_entry = &other->table[i];
         key = other_entry->key;
         if (key != NULL && key != dummy) {
-            if (set_add_entry(so, key, other_entry->hash))
-                return -1;
+            if (set_add_entry(so, key, other_entry->hash)) {
+                rv = -1;
+                goto exit;
+            }
         }
     }
-    return 0;
+
+exit:
+    Py_END_CRITICAL_SECTION2();
+    return rv;
+}
+
+static int set_merge_dict(PySetObject *so, PyObject *other) {
+    int rv = 0;
+    PyObject *key, *value;
+    Py_ssize_t pos = 0;
+    Py_hash_t hash;
+    Py_ssize_t dictsize;
+
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
+    dictsize = PyDict_GET_SIZE(other);
+
+    /* Do one big resize at the start, rather than
+    * incrementally resizing as we insert new keys.  Expect
+    * that there will be no (or few) overlapping keys.
+    */
+    if (dictsize < 0)
+        goto exit;
+    if ((so->fill + dictsize)*5 >= so->mask*3) {
+        if (set_table_resize(so, (so->used + dictsize)*2) != 0) {
+            rv = -1;
+            goto exit;
+        }
+    }
+    while (_PyDict_Next(other, &pos, &key, &value, &hash)) {
+        if (set_add_entry(so, key, hash)) {
+            rv = -1;
+            goto exit;
+        }
+    }
+
+exit:
+    Py_END_CRITICAL_SECTION2();
+    return rv;
 }
 
 static PyObject *
@@ -900,50 +949,34 @@ set_iter(PySetObject *so)
 static int
 set_update_internal(PySetObject *so, PyObject *other)
 {
+    int rv = 0;
     PyObject *key, *it;
 
     if (PyAnySet_Check(other))
         return set_merge(so, other);
 
     if (PyDict_CheckExact(other)) {
-        PyObject *value;
-        Py_ssize_t pos = 0;
-        Py_hash_t hash;
-        Py_ssize_t dictsize = PyDict_GET_SIZE(other);
-
-        /* Do one big resize at the start, rather than
-        * incrementally resizing as we insert new keys.  Expect
-        * that there will be no (or few) overlapping keys.
-        */
-        if (dictsize < 0)
-            return -1;
-        if ((so->fill + dictsize)*5 >= so->mask*3) {
-            if (set_table_resize(so, (so->used + dictsize)*2) != 0)
-                return -1;
-        }
-        while (_PyDict_Next(other, &pos, &key, &value, &hash)) {
-            if (set_add_entry(so, key, hash))
-                return -1;
-        }
-        return 0;
+        return set_merge_dict(so, other);
     }
 
     it = PyObject_GetIter(other);
     if (it == NULL)
         return -1;
 
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
     while ((key = PyIter_Next(it)) != NULL) {
         if (set_add_key(so, key)) {
-            Py_DECREF(it);
             Py_DECREF(key);
-            return -1;
+            rv = -1;
+            break;
         }
         Py_DECREF(key);
     }
+    Py_END_CRITICAL_SECTION2();
     Py_DECREF(it);
     if (PyErr_Occurred())
         return -1;
-    return 0;
+    return rv;
 }
 
 static PyObject *
