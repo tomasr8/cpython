@@ -1685,18 +1685,23 @@ set_difference_multi(PySetObject *so, PyObject *args)
     if (PyTuple_GET_SIZE(args) == 0)
         return set_copy(so, NULL);
 
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
     other = PyTuple_GET_ITEM(args, 0);
     result = set_difference(so, other);
     if (result == NULL)
-        return NULL;
+        goto exit;
 
     for (i=1 ; i<PyTuple_GET_SIZE(args) ; i++) {
         other = PyTuple_GET_ITEM(args, i);
         if (set_difference_update_internal((PySetObject *)result, other)) {
             Py_DECREF(result);
-            return NULL;
+            result = NULL;
+            break;
         }
     }
+
+exit:
+    Py_END_CRITICAL_SECTION2();
     return result;
 }
 
