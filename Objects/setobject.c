@@ -1435,62 +1435,75 @@ set_iand(PySetObject *so, PyObject *other)
 }
 
 static PyObject *
+set_isdisjoint_set(PySetObject *so, PySetObject *other) {
+    PySetObject *tmp;
+    Py_ssize_t pos = 0;
+    setentry *entry;
+    PyObject *ret = Py_True;
+
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
+    if (PySet_GET_SIZE(other) > PySet_GET_SIZE(so)) {
+        tmp = so;
+        so = other;
+        other = tmp;
+    }
+    while (set_next((PySetObject *)other, &pos, &entry)) {
+        PyObject *key = entry->key;
+        Py_INCREF(key);
+        int rv = set_contains_entry(so, key, entry->hash);
+        Py_DECREF(key);
+        if (rv < 0) {
+            ret = NULL;
+            break;
+        }
+        if (rv) {
+            ret = Py_False;
+            break;
+        }
+    }
+    Py_END_CRITICAL_SECTION2();
+    return ret;
+}
+
+static PyObject *
 set_isdisjoint(PySetObject *so, PyObject *other)
 {
-    PyObject *key, *it, *tmp;
-    int rv;
+    PyObject *key, *it;
+    PyObject *ret = Py_True;
 
     if ((PyObject *)so == other) {
-        if (PySet_GET_SIZE(so) == 0)
+        if (set_len(so) == 0)
             Py_RETURN_TRUE;
         else
             Py_RETURN_FALSE;
     }
 
     if (PyAnySet_CheckExact(other)) {
-        Py_ssize_t pos = 0;
-        setentry *entry;
-
-        if (PySet_GET_SIZE(other) > PySet_GET_SIZE(so)) {
-            tmp = (PyObject *)so;
-            so = (PySetObject *)other;
-            other = tmp;
-        }
-        while (set_next((PySetObject *)other, &pos, &entry)) {
-            PyObject *key = entry->key;
-            Py_INCREF(key);
-            rv = set_contains_entry(so, key, entry->hash);
-            Py_DECREF(key);
-            if (rv < 0) {
-                return NULL;
-            }
-            if (rv) {
-                Py_RETURN_FALSE;
-            }
-        }
-        Py_RETURN_TRUE;
+        return set_isdisjoint_set(so, (PySetObject *)other);
     }
 
     it = PyObject_GetIter(other);
     if (it == NULL)
         return NULL;
 
+    Py_BEGIN_CRITICAL_SECTION(so);
     while ((key = PyIter_Next(it)) != NULL) {
-        rv = set_contains_key(so, key);
+        int rv = set_contains_key(so, key);
         Py_DECREF(key);
         if (rv < 0) {
-            Py_DECREF(it);
-            return NULL;
+            ret = NULL;
+            break;
         }
         if (rv) {
-            Py_DECREF(it);
-            Py_RETURN_FALSE;
+            ret = Py_False;
+            break;
         }
     }
+    Py_END_CRITICAL_SECTION();
     Py_DECREF(it);
     if (PyErr_Occurred())
         return NULL;
-    Py_RETURN_TRUE;
+    return ret;
 }
 
 PyDoc_STRVAR(isdisjoint_doc,
