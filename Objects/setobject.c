@@ -1243,10 +1243,56 @@ set_ior(PySetObject *so, PyObject *other)
 }
 
 static PyObject *
+set_intersection_set(PySetObject *so, PySetObject *other) {
+    Py_ssize_t pos = 0;
+    setentry *entry;
+    PyObject *key;
+    PySetObject *tmp;
+    Py_hash_t hash;
+    PySetObject *result;
+    int rv;
+
+    result = (PySetObject *)make_new_set_basetype(Py_TYPE(so), NULL);
+    if (result == NULL)
+        return NULL;
+
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
+    if (PySet_GET_SIZE(other) > PySet_GET_SIZE(so)) {
+        tmp = so;
+        so = other;
+        other = tmp;
+    }
+
+    while (set_next((PySetObject *)other, &pos, &entry)) {
+        key = entry->key;
+        hash = entry->hash;
+        Py_INCREF(key);
+        rv = set_contains_entry(so, key, hash);
+        if (rv < 0) {
+            Py_CLEAR(result);
+            Py_DECREF(key);
+            goto exit;
+        }
+        if (rv) {
+            if (set_add_entry(result, key, hash)) {
+                Py_CLEAR(result);
+                Py_DECREF(key);
+                goto exit;
+            }
+        }
+        Py_DECREF(key);
+    }
+
+exit:
+    Py_END_CRITICAL_SECTION2();
+    return (PyObject *)result;
+}
+
+static PyObject *
 set_intersection(PySetObject *so, PyObject *other)
 {
     PySetObject *result;
-    PyObject *key, *it, *tmp;
+    PyObject *key, *it;
     Py_hash_t hash;
     int rv;
 
@@ -1258,35 +1304,7 @@ set_intersection(PySetObject *so, PyObject *other)
         return NULL;
 
     if (PyAnySet_Check(other)) {
-        Py_ssize_t pos = 0;
-        setentry *entry;
-
-        if (PySet_GET_SIZE(other) > PySet_GET_SIZE(so)) {
-            tmp = (PyObject *)so;
-            so = (PySetObject *)other;
-            other = tmp;
-        }
-
-        while (set_next((PySetObject *)other, &pos, &entry)) {
-            key = entry->key;
-            hash = entry->hash;
-            Py_INCREF(key);
-            rv = set_contains_entry(so, key, hash);
-            if (rv < 0) {
-                Py_DECREF(result);
-                Py_DECREF(key);
-                return NULL;
-            }
-            if (rv) {
-                if (set_add_entry(result, key, hash)) {
-                    Py_DECREF(result);
-                    Py_DECREF(key);
-                    return NULL;
-                }
-            }
-            Py_DECREF(key);
-        }
-        return (PyObject *)result;
+        return set_intersection_set(so, (PySetObject *)other);
     }
 
     it = PyObject_GetIter(other);
@@ -1295,6 +1313,7 @@ set_intersection(PySetObject *so, PyObject *other)
         return NULL;
     }
 
+    Py_BEGIN_CRITICAL_SECTION(so);
     while ((key = PyIter_Next(it)) != NULL) {
         hash = PyObject_Hash(key);
         if (hash == -1)
@@ -1312,13 +1331,17 @@ set_intersection(PySetObject *so, PyObject *other)
         }
         Py_DECREF(key);
     }
+    Py_END_CRITICAL_SECTION();
+
     Py_DECREF(it);
     if (PyErr_Occurred()) {
         Py_DECREF(result);
         return NULL;
     }
     return (PyObject *)result;
+
   error:
+    Py_END_CRITICAL_SECTION();
     Py_DECREF(it);
     Py_DECREF(result);
     Py_DECREF(key);
