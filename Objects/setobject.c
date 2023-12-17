@@ -463,6 +463,15 @@ set_clear_internal(PySetObject *so)
     return 0;
 }
 
+static int
+set_clear_internal_with_lock(PySetObject *so) {
+    int rv;
+    Py_BEGIN_CRITICAL_SECTION(so);
+    rv = set_clear_internal(so);
+    Py_END_CRITICAL_SECTION();
+    return rv;
+}
+
 /*
  * Iterate over a set table.  Use like so:
  *
@@ -504,8 +513,10 @@ static void
 set_dealloc(PySetObject *so)
 {
     setentry *entry;
-    Py_ssize_t used = so->used;
+    Py_ssize_t used;
 
+    Py_BEGIN_CRITICAL_SECTION(so);
+    used = so->used;
     /* bpo-31095: UnTrack is needed before calling any callbacks */
     PyObject_GC_UnTrack(so);
     Py_TRASHCAN_BEGIN(so, set_dealloc)
@@ -522,6 +533,7 @@ set_dealloc(PySetObject *so)
         PyMem_Free(so->table);
     Py_TYPE(so)->tp_free(so);
     Py_TRASHCAN_END
+    Py_END_CRITICAL_SECTION();
 }
 
 static PyObject *
@@ -533,14 +545,15 @@ set_repr(PySetObject *so)
 
     if (status != 0) {
         if (status < 0)
-            return NULL;
-        return PyUnicode_FromFormat("%s(...)", Py_TYPE(so)->tp_name);
+            goto done;
+        result = PyUnicode_FromFormat("%s(...)", Py_TYPE(so)->tp_name);
+        goto done;
     }
 
     /* shortcut for the empty set */
     if (!so->used) {
-        Py_ReprLeave((PyObject*)so);
-        return PyUnicode_FromFormat("%s()", Py_TYPE(so)->tp_name);
+        result = PyUnicode_FromFormat("%s()", Py_TYPE(so)->tp_name);
+        goto done;
     }
 
     keys = PySequence_List((PyObject *)so);
@@ -700,11 +713,14 @@ exit:
 static PyObject *
 set_pop(PySetObject *so, PyObject *Py_UNUSED(ignored))
 {
+    setentry *entry;
+    setentry *limit;
+    PyObject *key = NULL;
+
     Py_BEGIN_CRITICAL_SECTION(so);
     /* Make sure the search finger is in bounds */
-    setentry *entry = so->table + (so->finger & so->mask);
-    setentry *limit = so->table + so->mask;
-    PyObject *key = NULL;
+    entry = so->table + (so->finger & so->mask);
+    limit = so->table + so->mask;
 
     if (so->used == 0) {
         PyErr_SetString(PyExc_KeyError, "pop from an empty set");
@@ -1152,12 +1168,7 @@ set_swap_bodies(PySetObject *a, PySetObject *b)
 static PyObject *
 set_copy(PySetObject *so, PyObject *Py_UNUSED(ignored))
 {
-    PyObject *newset;
-
-    Py_BEGIN_CRITICAL_SECTION(so);
-    newset = make_new_set_basetype(Py_TYPE(so), (PyObject *)so);
-    Py_END_CRITICAL_SECTION();
-    return newset;
+    return make_new_set_basetype(Py_TYPE(so), (PyObject *)so);
 }
 
 static PyObject *
@@ -1299,13 +1310,13 @@ set_intersection(PySetObject *so, PyObject *other)
     if ((PyObject *)so == other)
         return set_copy(so, NULL);
 
-    result = (PySetObject *)make_new_set_basetype(Py_TYPE(so), NULL);
-    if (result == NULL)
-        return NULL;
-
     if (PyAnySet_Check(other)) {
         return set_intersection_set(so, (PySetObject *)other);
     }
+
+    result = (PySetObject *)make_new_set_basetype(Py_TYPE(so), NULL);
+    if (result == NULL)
+        return NULL;
 
     it = PyObject_GetIter(other);
     if (it == NULL) {
@@ -1316,14 +1327,20 @@ set_intersection(PySetObject *so, PyObject *other)
     Py_BEGIN_CRITICAL_SECTION(so);
     while ((key = PyIter_Next(it)) != NULL) {
         hash = PyObject_Hash(key);
-        if (hash == -1)
-            goto error;
+        if (hash == -1) {
+            Py_DECREF(key);
+            break;
+        }
         rv = set_contains_entry(so, key, hash);
-        if (rv < 0)
-            goto error;
+        if (rv < 0) {
+            Py_DECREF(key);
+            break;
+        }
         if (rv) {
-            if (set_add_entry(result, key, hash))
-                goto error;
+            if (set_add_entry(result, key, hash)) {
+                Py_DECREF(key);
+                break;
+            }
             if (PySet_GET_SIZE(result) >= PySet_GET_SIZE(so)) {
                 Py_DECREF(key);
                 break;
@@ -1339,25 +1356,19 @@ set_intersection(PySetObject *so, PyObject *other)
         return NULL;
     }
     return (PyObject *)result;
-
-  error:
-    Py_END_CRITICAL_SECTION();
-    Py_DECREF(it);
-    Py_DECREF(result);
-    Py_DECREF(key);
-    return NULL;
 }
 
 static PyObject *
 set_intersection_multi(PySetObject *so, PyObject *args)
 {
     Py_ssize_t i;
+    PyObject *result;
 
     if (PyTuple_GET_SIZE(args) == 0)
         return set_copy(so, NULL);
 
     Py_BEGIN_CRITICAL_SECTION(so);
-    PyObject *result = Py_NewRef(so);
+    result = Py_NewRef(so);
     for (i=0 ; i<PyTuple_GET_SIZE(args) ; i++) {
         PyObject *other = PyTuple_GET_ITEM(args, i);
         PyObject *newresult = set_intersection((PySetObject *)result, other);
@@ -1386,7 +1397,9 @@ set_intersection_update(PySetObject *so, PyObject *other)
     tmp = set_intersection(so, other);
     if (tmp == NULL)
         return NULL;
+    Py_BEGIN_CRITICAL_SECTION(so);
     set_swap_bodies(so, (PySetObject *)tmp);
+    Py_END_CRITICAL_SECTION();
     Py_DECREF(tmp);
     Py_RETURN_NONE;
 }
@@ -1399,9 +1412,9 @@ set_intersection_update_multi(PySetObject *so, PyObject *args)
     tmp = set_intersection_multi(so, args);
     if (tmp == NULL)
         return NULL;
-    Py_BEGIN_CRITICAL_SECTION2(so, tmp);
+    Py_BEGIN_CRITICAL_SECTION(so);
     set_swap_bodies(so, (PySetObject *)tmp);
-    Py_END_CRITICAL_SECTION2();
+    Py_END_CRITICAL_SECTION();
     Py_DECREF(tmp);
     Py_RETURN_NONE;
 }
@@ -1510,61 +1523,86 @@ PyDoc_STRVAR(isdisjoint_doc,
 "Return True if two sets have a null intersection.");
 
 static int
-set_difference_update_internal(PySetObject *so, PyObject *other)
+set_maybe_resize_dummies(PySetObject *so)
 {
-    if ((PyObject *)so == other)
-        return set_clear_internal(so);
-
-    if (PyAnySet_Check(other)) {
-        setentry *entry;
-        Py_ssize_t pos = 0;
-
-        /* Optimization:  When the other set is more than 8 times
-           larger than the base set, replace the other set with
-           intersection of the two sets.
-        */
-        if ((PySet_GET_SIZE(other) >> 3) > PySet_GET_SIZE(so)) {
-            other = set_intersection(so, other);
-            if (other == NULL)
-                return -1;
-        } else {
-            Py_INCREF(other);
-        }
-
-        while (set_next((PySetObject *)other, &pos, &entry)) {
-            PyObject *key = entry->key;
-            Py_INCREF(key);
-            if (set_discard_entry(so, key, entry->hash) < 0) {
-                Py_DECREF(other);
-                Py_DECREF(key);
-                return -1;
-            }
-            Py_DECREF(key);
-        }
-
-        Py_DECREF(other);
-    } else {
-        PyObject *key, *it;
-        it = PyObject_GetIter(other);
-        if (it == NULL)
-            return -1;
-
-        while ((key = PyIter_Next(it)) != NULL) {
-            if (set_discard_key(so, key) < 0) {
-                Py_DECREF(it);
-                Py_DECREF(key);
-                return -1;
-            }
-            Py_DECREF(key);
-        }
-        Py_DECREF(it);
-        if (PyErr_Occurred())
-            return -1;
-    }
     /* If more than 1/4th are dummies, then resize them away. */
     if ((size_t)(so->fill - so->used) <= (size_t)so->mask / 4)
         return 0;
     return set_table_resize(so, so->used>50000 ? so->used*2 : so->used*4);
+}
+
+static int
+set_difference_update_internal_set(PySetObject *so, PyObject *other)
+{
+    setentry *entry;
+    Py_ssize_t pos = 0;
+    int rv;
+
+    /* Optimization:  When the other set is more than 8 times
+        larger than the base set, replace the other set with
+        intersection of the two sets.
+    */
+    if ((set_len((PySetObject *)other) >> 3) > set_len(so)) {
+        other = set_intersection(so, other);
+        if (other == NULL)
+            return -1;
+    } else {
+        Py_INCREF(other);
+    }
+
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
+    while (set_next((PySetObject *)other, &pos, &entry)) {
+        PyObject *key = entry->key;
+        Py_INCREF(key);
+        if (set_discard_entry(so, key, entry->hash) < 0) {
+            Py_DECREF(other);
+            Py_DECREF(key);
+            rv = -1;
+            break;
+        }
+        Py_DECREF(key);
+    }
+    Py_DECREF(other);
+    if(rv == 0) {
+        rv = set_maybe_resize_dummies(so);
+    }
+    Py_END_CRITICAL_SECTION2();
+    return rv;
+}
+
+static int
+set_difference_update_internal(PySetObject *so, PyObject *other)
+{
+    PyObject *key, *it;
+    int rv;
+
+    if ((PyObject *)so == other)
+        return set_clear_internal_with_lock(so);
+
+    if (PyAnySet_Check(other)) {
+        return set_difference_update_internal_set(so, other);
+    }
+
+    it = PyObject_GetIter(other);
+    if (it == NULL)
+        return -1;
+
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
+    while ((key = PyIter_Next(it)) != NULL) {
+        if (set_discard_key(so, key) < 0) {
+            Py_DECREF(it);
+            Py_DECREF(key);
+            rv = -1;
+            break;
+        }
+        Py_DECREF(key);
+    }
+    Py_CLEAR(it);
+    if (PyErr_Occurred() || set_maybe_resize_dummies(so) < 0) {
+        rv = -1;
+    }
+    Py_END_CRITICAL_SECTION2();
+    return rv;
 }
 
 static PyObject *
@@ -1590,18 +1628,56 @@ static PyObject *
 set_copy_and_difference(PySetObject *so, PyObject *other)
 {
     PyObject *result;
+    int rv;
 
     result = set_copy(so, NULL);
     if (result == NULL)
         return NULL;
     Py_BEGIN_CRITICAL_SECTION2(so, other);
-    int rv = set_difference_update_internal((PySetObject *) result, other); 
+    rv = set_difference_update_internal((PySetObject *) result, other); 
     Py_END_CRITICAL_SECTION2();
     if (rv == 0) {
         return result;
     }
     Py_DECREF(result);
     return NULL;
+}
+
+static PyObject *
+set_difference_dict(PySetObject *so, PyDictObject *other)
+{
+    PyObject *key;
+    Py_hash_t hash;
+    setentry *entry;
+    Py_ssize_t pos = 0;
+    int rv;
+
+    PyObject *result = make_new_set_basetype(Py_TYPE(so), NULL);
+    if (result == NULL)
+        return NULL;
+
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
+    while (set_next(so, &pos, &entry)) {
+        key = Py_NewRef(entry->key);
+        hash = entry->hash;
+        rv = _PyDict_Contains_KnownHash((PyObject *)other, key, hash);
+        if (rv < 0) {
+            Py_DECREF(key);
+            Py_CLEAR(result);
+            goto exit;
+        }
+        if (!rv) {
+            if (set_add_entry((PySetObject *)result, key, hash)) {
+                Py_DECREF(key);
+                Py_CLEAR(result);
+                goto exit;
+            }
+        }
+        Py_DECREF(key);
+    }
+exit:
+    Py_END_CRITICAL_SECTION2();
+    return result;
 }
 
 static PyObject *
@@ -1630,33 +1706,15 @@ set_difference(PySetObject *so, PyObject *other)
         return set_copy_and_difference(so, other);
     }
 
+    if (PyDict_CheckExact(other)) {
+        return set_difference_dict(so, (PyDictObject *)other);
+    }
+
     result = make_new_set_basetype(Py_TYPE(so), NULL);
     if (result == NULL)
         return NULL;
 
-    if (PyDict_CheckExact(other)) {
-        while (set_next(so, &pos, &entry)) {
-            key = entry->key;
-            hash = entry->hash;
-            Py_INCREF(key);
-            rv = _PyDict_Contains_KnownHash(other, key, hash);
-            if (rv < 0) {
-                Py_DECREF(result);
-                Py_DECREF(key);
-                return NULL;
-            }
-            if (!rv) {
-                if (set_add_entry((PySetObject *)result, key, hash)) {
-                    Py_DECREF(result);
-                    Py_DECREF(key);
-                    return NULL;
-                }
-            }
-            Py_DECREF(key);
-        }
-        return result;
-    }
-
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
     /* Iterate over so, checking for common elements in other. */
     while (set_next(so, &pos, &entry)) {
         key = entry->key;
@@ -1664,19 +1722,21 @@ set_difference(PySetObject *so, PyObject *other)
         Py_INCREF(key);
         rv = set_contains_entry((PySetObject *)other, key, hash);
         if (rv < 0) {
-            Py_DECREF(result);
+            Py_CLEAR(result);
             Py_DECREF(key);
-            return NULL;
+            goto exit;
         }
         if (!rv) {
             if (set_add_entry((PySetObject *)result, key, hash)) {
-                Py_DECREF(result);
+                Py_CLEAR(result);
                 Py_DECREF(key);
-                return NULL;
+                goto exit;
             }
         }
         Py_DECREF(key);
     }
+exit:
+    Py_END_CRITICAL_SECTION2();
     return result;
 }
 
@@ -1689,11 +1749,10 @@ set_difference_multi(PySetObject *so, PyObject *args)
     if (PyTuple_GET_SIZE(args) == 0)
         return set_copy(so, NULL);
 
-    Py_BEGIN_CRITICAL_SECTION2(so, other);
     other = PyTuple_GET_ITEM(args, 0);
     result = set_difference(so, other);
     if (result == NULL)
-        goto exit;
+        return result;
 
     for (i=1 ; i<PyTuple_GET_SIZE(args) ; i++) {
         other = PyTuple_GET_ITEM(args, i);
@@ -1703,9 +1762,6 @@ set_difference_multi(PySetObject *so, PyObject *args)
             break;
         }
     }
-
-exit:
-    Py_END_CRITICAL_SECTION2();
     return result;
 }
 
@@ -1733,6 +1789,39 @@ set_isub(PySetObject *so, PyObject *other)
 }
 
 static PyObject *
+set_symmetric_difference_update_dict(PySetObject *so, PyObject *other)
+{
+    PyObject *value;
+    PyObject *key;
+    Py_ssize_t pos = 0;
+    Py_hash_t hash;
+    int rv;
+    PyObject *result = Py_None;
+
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
+    while (_PyDict_Next(other, &pos, &key, &value, &hash)) {
+        Py_INCREF(key);
+        rv = set_discard_entry(so, key, hash);
+        if (rv < 0) {
+            Py_DECREF(key);
+            result = NULL;
+            goto exit;
+        }
+        if (rv == DISCARD_NOTFOUND) {
+            if (set_add_entry(so, key, hash)) {
+                Py_DECREF(key);
+                result = NULL;
+                goto exit;
+            }
+        }
+        Py_DECREF(key);
+    }
+exit:
+    Py_END_CRITICAL_SECTION2();
+    return result;
+}
+
+static PyObject *
 set_symmetric_difference_update(PySetObject *so, PyObject *other)
 {
     PySetObject *otherset;
@@ -1741,28 +1830,13 @@ set_symmetric_difference_update(PySetObject *so, PyObject *other)
     Py_hash_t hash;
     setentry *entry;
     int rv;
+    PyObject *result = Py_None;
 
     if ((PyObject *)so == other)
         return set_clear(so, NULL);
 
     if (PyDict_CheckExact(other)) {
-        PyObject *value;
-        while (_PyDict_Next(other, &pos, &key, &value, &hash)) {
-            Py_INCREF(key);
-            rv = set_discard_entry(so, key, hash);
-            if (rv < 0) {
-                Py_DECREF(key);
-                return NULL;
-            }
-            if (rv == DISCARD_NOTFOUND) {
-                if (set_add_entry(so, key, hash)) {
-                    Py_DECREF(key);
-                    return NULL;
-                }
-            }
-            Py_DECREF(key);
-        }
-        Py_RETURN_NONE;
+        return set_symmetric_difference_update_dict(so, other);
     }
 
     if (PyAnySet_Check(other)) {
@@ -1773,6 +1847,7 @@ set_symmetric_difference_update(PySetObject *so, PyObject *other)
             return NULL;
     }
 
+    Py_BEGIN_CRITICAL_SECTION2(so, other);
     while (set_next(otherset, &pos, &entry)) {
         key = entry->key;
         hash = entry->hash;
@@ -1781,19 +1856,23 @@ set_symmetric_difference_update(PySetObject *so, PyObject *other)
         if (rv < 0) {
             Py_DECREF(otherset);
             Py_DECREF(key);
-            return NULL;
+            result = NULL;
+            goto exit;
         }
         if (rv == DISCARD_NOTFOUND) {
             if (set_add_entry(so, key, hash)) {
                 Py_DECREF(otherset);
                 Py_DECREF(key);
-                return NULL;
+                result = NULL;
+                goto exit;
             }
         }
         Py_DECREF(key);
     }
+exit:
+    Py_END_CRITICAL_SECTION2();
     Py_DECREF(otherset);
-    Py_RETURN_NONE;
+    return result;
 }
 
 PyDoc_STRVAR(symmetric_difference_update_doc,
@@ -1801,16 +1880,6 @@ PyDoc_STRVAR(symmetric_difference_update_doc,
 --\n\
 \n\
 Update the set, keeping only elements found in either set, but not in both.");
-
-static PyObject *
-set_symmetric_difference_update_with_lock(PySetObject *so, PyObject *other) {
-    PyObject *result;
-
-    Py_BEGIN_CRITICAL_SECTION(so);
-    result = set_symmetric_difference_update(so, other);
-    Py_END_CRITICAL_SECTION();
-    return result;
-}
 
 static PyObject *
 set_symmetric_difference(PySetObject *so, PyObject *other)
@@ -2128,8 +2197,10 @@ done:
 static PyObject *
 set_sizeof(PySetObject *so, PyObject *Py_UNUSED(ignored))
 {
+    size_t res;
+
     Py_BEGIN_CRITICAL_SECTION(so);
-    size_t res = _PyObject_SIZE(Py_TYPE(so));
+    res = _PyObject_SIZE(Py_TYPE(so));
     if (so->table != so->smalltable) {
         res += ((size_t)so->mask + 1) * sizeof(setentry);
     }
@@ -2225,7 +2296,7 @@ static PyMethodDef set_methods[] = {
      sizeof_doc},
     {"symmetric_difference",(PyCFunction)set_symmetric_difference,      METH_O,
      symmetric_difference_doc},
-    {"symmetric_difference_update",(PyCFunction)set_symmetric_difference_update_with_lock,        METH_O,
+    {"symmetric_difference_update",(PyCFunction)set_symmetric_difference_update,        METH_O,
      symmetric_difference_update_doc},
     {"union",           (PyCFunction)set_union,         METH_VARARGS,
      union_doc},
@@ -2442,7 +2513,7 @@ PySet_Size(PyObject *anyset)
         PyErr_BadInternalCall();
         return -1;
     }
-    return PySet_GET_SIZE(anyset);
+    return set_len((PySetObject *)anyset);
 }
 
 int
@@ -2452,7 +2523,7 @@ PySet_Clear(PyObject *set)
         PyErr_BadInternalCall();
         return -1;
     }
-    return set_clear_internal((PySetObject *)set);
+    return set_clear_internal_with_lock((PySetObject *)set);
 }
 
 int
