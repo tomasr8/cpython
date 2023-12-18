@@ -1,0 +1,86 @@
+set_methods
+    set_add                                    YES set_add_key
+    set_clear                                  YES set_clear_internal_with_lock
+    set_direct_contains                        YES
+    set_copy                                   YES set_update_internal
+    set_discard                                YES
+    set_difference_multi                       YES set_difference_update_internal
+    set_difference_update                      YES set_difference_update_internal
+    set_intersection_multi                     YES
+    set_intersection_update_multi              YES set_intersection_multi
+    set_isdisjoint                             YES
+    set_issubset                               YES but Not sure if thread-safe
+    set_issuperset                             YES
+    set_pop                                    YES
+    set_reduce                                 YES
+    set_remove                                 YES but Not sure if thread-safe
+    set_sizeof                                 YES
+    set_symmetric_difference                   YES
+    set_symmetric_difference_update_with_lock  YES
+    set_union                                  YES set_update_internal
+    set_update
+
+set_as_number
+    set_sub,                YES set_difference
+    set_and,                YES set_interesection
+    set_xor,                YES set_symmetric_difference
+    set_or,                 YES set_copy/set_update_internal (not entirely sure if thread safe)
+    set_isub,               YES set_difference_update_internal
+    set_iand,               YES set_intersection_update
+    set_ixor,               YES set_symmetric_difference_update
+    set_ior,                YES set_update_internal
+
+set
+    set_dealloc,           NO (should be thread-safe?)
+    set_repr,              YES
+    set_as_sequence,       YES
+    set_traverse,          NO should be thread-safe?
+    set_clear_internal,    NO should be thread-safe?
+    set_richcompare,       NO should be thread-safe?
+    set_iter,              NO should be thread-safe?
+    set_init,              Not sure (should it be anyway?)
+    set_new,               YES make_new_set
+    set_vectorcall,        YES make_new_set
+
+frozenset_methods
+    set_direct_contains         YES
+    frozenset_copy              NO not needed?
+    set_difference_multi        YES set_difference_update_internal
+    set_intersection_multi      YES
+    set_isdisjoint              YES
+    set_issubset                YES but not sure if thread-safe
+    set_issuperset              YES
+    set_reduce                  YES
+    set_sizeof                  YES
+    set_symmetric_difference    YES
+    set_union                   YES set_update_internal
+
+frozenset_as_number
+    set_sub,                YES set_difference
+    set_and,                YES set_interesection
+    set_xor,                YES set_symmetric_difference
+    set_or,                 YES set_copy/set_update_internal (not entirely sure if thread safe)
+
+frozenset
+    set_dealloc,           NO (should be thread-safe?)
+    set_repr,              YES
+    set_as_sequence,       YES
+    frozenset_hash,        NO not needed as frozen set does not change?
+    set_traverse,          NO should be thread-safe?
+    set_clear_internal,    NO should be thread-safe?
+    set_richcompare,       NO should be thread-safe?
+    set_iter,              NO should be thread-safe?
+    frozenset_new,         make_new_frozenset
+    frozenset_vectorcall,  make_new_frozenset
+
+C API
+    PySet_New                  YES make_new_set
+    PyFrozenSet_New            YES make_new_set
+    PySet_Size                 YES set_len
+    PySet_Clear                YES set_clear_internal_with_lock
+    PySet_Contains             YES set_contains_key
+    PySet_Discard              YES set_discard_key
+    PySet_Add                  YES set_add_key
+    _PySet_NextEntry           NO set_next (should be thread safe??)
+    PySet_Pop                  YES set_pop
+    _PySet_Update              YES set_update_internal
