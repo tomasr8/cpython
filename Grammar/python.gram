@@ -825,7 +825,62 @@ primary[expr_ty]:
                  (b) ? ((expr_ty) b)->v.Call.keywords : NULL,
                  EXTRA) }
     | a=primary '[' b=slices ']' { _PyAST_Subscript(a, b, Load, EXTRA) }
+    | a=jsx { a }
     | atom
+
+jsx[expr_ty]:
+    | '<>' a=jsx_children '<' '/' '>' {
+        _PyAST_Call(
+            _PyAST_Name(_PyPegen_new_identifier(p, "jsx"), Load, EXTRA),
+            (asdl_expr_seq*)_PyPegen_seq_insert_in_front(
+                p,
+                _PyAST_Name(_PyPegen_new_identifier(p, "Fragment"), Load, EXTRA),
+                _PyPegen_seq_insert_in_front(p, _PyAST_Constant(Py_None, NULL, EXTRA), (asdl_seq*)a)),
+            NULL, EXTRA) }
+    | '<' a[Token*]=NAME_RAW b=jsx_prop_dict '/' '>' {
+        _PyAST_Call(
+            _PyAST_Name(_PyPegen_new_identifier(p, "jsx"), Load, EXTRA),
+            (asdl_expr_seq*)_PyPegen_seq_insert_in_front(
+                p,
+                _PyPegen_jsx_is_builtin_tag(a) ? _PyPegen_constant_from_token(p, a) : _PyPegen_name_from_token(p, a),
+                _PyPegen_singleton_seq(p, b)),
+            NULL, EXTRA) }
+    | '<' a[Token*]=NAME_RAW b=jsx_prop_dict '>' (NEWLINE)* (INDENT)* (c=jsx_children) (NEWLINE)* (DEDENT)* '<' '/' d[Token*]=NAME_RAW '>' {
+        _PyAST_Call(
+            _PyAST_Name(_PyPegen_new_identifier(p, "jsx"), Load, EXTRA),
+            (asdl_expr_seq*)_PyPegen_seq_insert_in_front(
+                p,
+                _PyPegen_jsx_is_builtin_tag(a) ? _PyPegen_constant_from_token(p, a) : _PyPegen_name_from_token(p, a),
+                _PyPegen_seq_insert_in_front(p, b, (asdl_seq*)c)),
+            NULL, EXTRA) }
+
+jsx_children[asdl_expr_seq*]:
+    | a[asdl_expr_seq*]=(jsx_child)* { a }
+
+jsx_child[expr_ty]:
+    | (NEWLINE)* (INDENT)* (DEDENT)* a=strings (NEWLINE)* (INDENT)* (DEDENT)* { a }
+    | (NEWLINE)* (INDENT)* (DEDENT)* '{' a=expression '}' (NEWLINE)* (INDENT)* (DEDENT)* { a }
+    | (NEWLINE)* (INDENT)* (DEDENT)* a=jsx (NEWLINE)* (INDENT)* (DEDENT)* { a }
+
+jsx_prop_dict[expr_ty]:
+    | a=[jsx_props] {
+        _PyAST_Dict(
+            CHECK(asdl_expr_seq*, _PyPegen_get_keys(p, a)),
+            CHECK(asdl_expr_seq*, _PyPegen_get_values(p, a)),
+            EXTRA) }
+
+jsx_props[asdl_seq*]: a=(jsx_prop)* { a }
+
+jsx_prop[KeyValuePair*]:
+    | a=NAME '=' '{' b=expression '}' {
+        _PyPegen_key_value_pair(p, _PyAST_Constant(a->v.Name.id, NULL, EXTRA), b) }
+    | a=NAME '=' b=strings {
+        _PyPegen_key_value_pair(p, _PyAST_Constant(a->v.Name.id, NULL, EXTRA), b) }
+    | a=NAME {
+        _PyPegen_key_value_pair(
+            p,
+            _PyAST_Constant(a->v.Name.id, NULL, EXTRA),
+            _PyAST_Constant(Py_True, NULL, EXTRA)) }
 
 slices[expr_ty]:
     | a=slice !',' { a }
