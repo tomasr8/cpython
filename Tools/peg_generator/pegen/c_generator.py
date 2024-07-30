@@ -80,6 +80,7 @@ BASE_NODETYPES = {
     "NUMBER": NodeTypes.NUMBER_TOKEN,
     "STRING": NodeTypes.STRING_TOKEN,
     "SOFT_KEYWORD": NodeTypes.SOFT_KEYWORD,
+    "NAME_RAW": NodeTypes.NAME_TOKEN,
 }
 
 

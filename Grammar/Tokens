@@ -1,5 +1,6 @@
 ENDMARKER
 NAME
+NAME_RAW
 NUMBER
 STRING
 NEWLINE
@@ -28,6 +29,7 @@ LBRACE                  '{'
 RBRACE                  '}'
 EQEQUAL                 '=='
 NOTEQUAL                '!='
+JSXFRAGMENTOPEN         '<>'
 LESSEQUAL               '<='
 GREATEREQUAL            '>='
 TILDE                   '~'

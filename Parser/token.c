@@ -8,6 +8,7 @@
 const char * const _PyParser_TokenNames[] = {
     "ENDMARKER",
     "NAME",
+    "NAME_RAW",
     "NUMBER",
     "STRING",
     "NEWLINE",
@@ -35,6 +36,7 @@ const char * const _PyParser_TokenNames[] = {
     "RBRACE",
     "EQEQUAL",
     "NOTEQUAL",
+    "JSXFRAGMENTOPEN",
     "LESSEQUAL",
     "GREATEREQUAL",
     "TILDE",
@@ -160,7 +162,7 @@ _PyToken_TwoChars(int c1, int c2)
         switch (c2) {
         case '<': return LEFTSHIFT;
         case '=': return LESSEQUAL;
-        case '>': return NOTEQUAL;
+        case '>': return JSXFRAGMENTOPEN;
         }
         break;
     case '=':

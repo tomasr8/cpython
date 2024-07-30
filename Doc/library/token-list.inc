@@ -3,6 +3,8 @@
 
 .. data:: NAME
 
+.. data:: NAME_RAW
+
 .. data:: NUMBER
 
 .. data:: STRING
@@ -100,6 +102,10 @@
 .. data:: NOTEQUAL
 
    Token value for ``"!="``.
+
+.. data:: JSXFRAGMENTOPEN
+
+   Token value for ``"<>"``.
 
 .. data:: LESSEQUAL
 
