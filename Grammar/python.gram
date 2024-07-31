@@ -874,7 +874,7 @@ jsx_props[asdl_seq*]: a=(jsx_prop)* { a }
 jsx_prop[KeyValuePair*]:
     | a=NAME '=' '{' b=expression '}' {
         _PyPegen_key_value_pair(p, _PyAST_Constant(a->v.Name.id, NULL, EXTRA), b) }
-    | a=NAME '=' b=strings {
+    | a=NAME '=' b=string {
         _PyPegen_key_value_pair(p, _PyAST_Constant(a->v.Name.id, NULL, EXTRA), b) }
     | a=NAME {
         _PyPegen_key_value_pair(

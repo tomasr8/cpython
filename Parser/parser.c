@@ -15048,7 +15048,7 @@ jsx_props_rule(Parser *p)
     return _res;
 }
 
-// jsx_prop: NAME '=' '{' expression '}' | NAME '=' strings | NAME
+// jsx_prop: NAME '=' '{' expression '}' | NAME '=' string | NAME
 static KeyValuePair*
 jsx_prop_rule(Parser *p)
 {
@@ -15115,12 +15115,12 @@ jsx_prop_rule(Parser *p)
         D(fprintf(stderr, "%*c%s jsx_prop[%d-%d]: %s failed!\n", p->level, ' ',
                   p->error_indicator ? "ERROR!" : "-", _mark, p->mark, "NAME '=' '{' expression '}'"));
     }
-    { // NAME '=' strings
+    { // NAME '=' string
         if (p->error_indicator) {
             p->level--;
             return NULL;
         }
-        D(fprintf(stderr, "%*c> jsx_prop[%d-%d]: %s\n", p->level, ' ', _mark, p->mark, "NAME '=' strings"));
+        D(fprintf(stderr, "%*c> jsx_prop[%d-%d]: %s\n", p->level, ' ', _mark, p->mark, "NAME '=' string"));
         Token * _literal;
         expr_ty a;
         expr_ty b;
@@ -15129,10 +15129,10 @@ jsx_prop_rule(Parser *p)
             &&
             (_literal = _PyPegen_expect_token(p, 23))  // token='='
             &&
-            (b = strings_rule(p))  // strings
+            (b = string_rule(p))  // string
         )
         {
-            D(fprintf(stderr, "%*c+ jsx_prop[%d-%d]: %s succeeded!\n", p->level, ' ', _mark, p->mark, "NAME '=' strings"));
+            D(fprintf(stderr, "%*c+ jsx_prop[%d-%d]: %s succeeded!\n", p->level, ' ', _mark, p->mark, "NAME '=' string"));
             Token *_token = _PyPegen_get_last_nonnwhitespace_token(p);
             if (_token == NULL) {
                 p->level--;
@@ -15152,7 +15152,7 @@ jsx_prop_rule(Parser *p)
         }
         p->mark = _mark;
         D(fprintf(stderr, "%*c%s jsx_prop[%d-%d]: %s failed!\n", p->level, ' ',
-                  p->error_indicator ? "ERROR!" : "-", _mark, p->mark, "NAME '=' strings"));
+                  p->error_indicator ? "ERROR!" : "-", _mark, p->mark, "NAME '=' string"));
     }
     { // NAME
         if (p->error_indicator) {
