@@ -1,3 +1,7 @@
+from jsx.elements import is_void_element
+from jsx.util import indent, flatten, dash_case
+
+
 __all__ = ["Component", "Fragment", "jsx"]
 
 
@@ -22,44 +26,46 @@ class JSXElement:
 
     def __repr__(self):
         tag = self.tag if isinstance(self.tag, str) else self.tag.__name__
-        if not self.children:
-            return f"<{tag} {self.props} />"
-        return f"<{tag} {self.props}>{self.children}</{tag}>"
+        return f"<{tag} />"
 
     def __str__(self):
         match self.tag:
             case str():
-                props = " ".join([f'{k}="{v}"' for k, v in self.props.items()])
-                if props:
-                    props = f" {props}"
-                children = _flatten(str(child) for child in self.children)
-                children = "\n".join(_indent(child) for child in children)
-                return f"<{self.tag}{props}>\n{children}\n</{self.tag}>"
+                return self._convert_builtin()
             case _:
-                component = self.tag({**self.props, "children": self.children})
-                rendered = component.render()
-                match rendered:
-                    case None:
-                        return ""
-                    case tuple() | list():
-                        return "\n".join(str(child) for child in rendered)
-                    case _:
-                        return str(rendered)
+                return self._convert_component()
+
+    def _convert_builtin(self):
+        props = " ".join([f'{k}="{v}"' for k, v in self.props.items()])
+        if props:
+            props = f" {props}"
+        if not self.children:
+            if is_void_element(self.tag):
+                return f"<{self.tag}{props} />"
+            return f"<{self.tag}{props}></{self.tag}>"
+        children = flatten(self.children)
+        children = flatten(str(child) for child in children)
+        children = "\n".join(indent(child) for child in children)
+        return f"<{self.tag}{props}>\n{children}\n</{self.tag}>"
+
+    def _convert_component(self):
+        component = self.tag({**self.props, "children": self.children})
+        rendered = component.render()
+        match rendered:
+            case None:
+                return ""
+            case tuple() | list():
+                return "\n".join(str(child) for child in rendered)
+            case _:
+                return str(rendered)
 
 
 def jsx(tag, props=None, *children):
     if props is None:
         props = {}
+    if (style := props.get("style")) and isinstance(style, dict):
+        props["style"] = "; ".join([f"{dash_case(k)}: {v}" for k, v in style.items()])
     return JSXElement(tag, props, children)
 
 
-def _indent(text, spaces=4):
-    return "\n".join(f"{' ' * spaces}{line}" for line in text.split("\n"))
-
-
-def _flatten(children):
-    for child in children:
-        if isinstance(child, (list, tuple)):
-            yield from _flatten(child)
-        else:
-            yield child
+jsx.Fragment = Fragment
