@@ -7581,6 +7581,18 @@ _PyAST_Dict(asdl_expr_seq * keys, asdl_expr_seq * values, int lineno, int
     return p;
 }
 
+/* Same as _PyAST_Dict but fixes invalid column offsets which
+   arise when no props are passed and there is a space after the closing '>'.
+   For example: '<foo />' or '<foo ></foo>'. */
+expr_ty
+_PyAST_JSXProp_Dict(asdl_expr_seq * keys, asdl_expr_seq * values, int lineno, int
+            col_offset, int end_lineno, int end_col_offset, PyArena *arena)
+{
+    expr_ty p = _PyAST_Dict(keys, values, lineno, col_offset, end_lineno, end_col_offset, arena);
+    p->end_col_offset = end_col_offset < col_offset ? col_offset : end_col_offset;
+    return p;
+}
+
 expr_ty
 _PyAST_Set(asdl_expr_seq * elts, int lineno, int col_offset, int end_lineno,
            int end_col_offset, PyArena *arena)

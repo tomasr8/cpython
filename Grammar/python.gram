@@ -834,7 +834,7 @@ jsx[expr_ty]:
             _PyAST_Name(_PyPegen_new_identifier(p, "jsx"), Load, EXTRA),
             (asdl_expr_seq*)_PyPegen_seq_insert_in_front(
                 p,
-                _PyAST_Name(_PyPegen_new_identifier(p, "Fragment"), Load, EXTRA),
+                _PyAST_Attribute(_PyAST_Name(_PyPegen_new_identifier(p, "jsx"), Load, EXTRA), _PyPegen_new_identifier(p, "Fragment"), Load, EXTRA),
                 _PyPegen_seq_insert_in_front(p, _PyAST_Constant(Py_None, NULL, EXTRA), (asdl_seq*)a)),
             NULL, EXTRA) }
     | '<' a[Token*]=NAME_RAW b=jsx_prop_dict '/' '>' {
@@ -864,7 +864,7 @@ jsx_child[expr_ty]:
 
 jsx_prop_dict[expr_ty]:
     | a=[jsx_props] {
-        _PyAST_Dict(
+        _PyAST_JSXProp_Dict(
             CHECK(asdl_expr_seq*, _PyPegen_get_keys(p, a)),
             CHECK(asdl_expr_seq*, _PyPegen_get_values(p, a)),
             EXTRA) }

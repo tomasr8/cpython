@@ -14615,7 +14615,7 @@ jsx_rule(Parser *p)
             UNUSED(_end_lineno); // Only used by EXTRA macro
             int _end_col_offset = _token->end_col_offset;
             UNUSED(_end_col_offset); // Only used by EXTRA macro
-            _res = _PyAST_Call ( _PyAST_Name ( _PyPegen_new_identifier ( p , "jsx" ) , Load , EXTRA ) , ( asdl_expr_seq* ) _PyPegen_seq_insert_in_front ( p , _PyAST_Name ( _PyPegen_new_identifier ( p , "Fragment" ) , Load , EXTRA ) , _PyPegen_seq_insert_in_front ( p , _PyAST_Constant ( Py_None , NULL , EXTRA ) , ( asdl_seq* ) a ) ) , NULL , EXTRA );
+            _res = _PyAST_Call ( _PyAST_Name ( _PyPegen_new_identifier ( p , "jsx" ) , Load , EXTRA ) , ( asdl_expr_seq* ) _PyPegen_seq_insert_in_front ( p , _PyAST_Attribute ( _PyAST_Name ( _PyPegen_new_identifier ( p , "jsx" ) , Load , EXTRA ) , _PyPegen_new_identifier ( p , "Fragment" ) , Load , EXTRA ) , _PyPegen_seq_insert_in_front ( p , _PyAST_Constant ( Py_None , NULL , EXTRA ) , ( asdl_seq* ) a ) ) , NULL , EXTRA );
             if (_res == NULL && PyErr_Occurred()) {
                 p->error_indicator = 1;
                 p->level--;
@@ -14987,7 +14987,7 @@ jsx_prop_dict_rule(Parser *p)
             UNUSED(_end_lineno); // Only used by EXTRA macro
             int _end_col_offset = _token->end_col_offset;
             UNUSED(_end_col_offset); // Only used by EXTRA macro
-            _res = _PyAST_Dict ( CHECK ( asdl_expr_seq* , _PyPegen_get_keys ( p , a ) ) , CHECK ( asdl_expr_seq* , _PyPegen_get_values ( p , a ) ) , EXTRA );
+            _res = _PyAST_JSXProp_Dict ( CHECK ( asdl_expr_seq* , _PyPegen_get_keys ( p , a ) ) , CHECK ( asdl_expr_seq* , _PyPegen_get_values ( p , a ) ) , EXTRA );
             if (_res == NULL && PyErr_Occurred()) {
                 p->error_indicator = 1;
                 p->level--;

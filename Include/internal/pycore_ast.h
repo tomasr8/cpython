@@ -791,6 +791,9 @@ expr_ty _PyAST_IfExp(expr_ty test, expr_ty body, expr_ty orelse, int lineno,
 expr_ty _PyAST_Dict(asdl_expr_seq * keys, asdl_expr_seq * values, int lineno,
                     int col_offset, int end_lineno, int end_col_offset, PyArena
                     *arena);
+expr_ty _PyAST_JSXProp_Dict(asdl_expr_seq * keys, asdl_expr_seq * values, int lineno,
+                    int col_offset, int end_lineno, int end_col_offset, PyArena
+                    *arena);
 expr_ty _PyAST_Set(asdl_expr_seq * elts, int lineno, int col_offset, int
                    end_lineno, int end_col_offset, PyArena *arena);
 expr_ty _PyAST_ListComp(expr_ty elt, asdl_comprehension_seq * generators, int
