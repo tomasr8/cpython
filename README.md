@@ -90,14 +90,13 @@ fragment = (
 
 ### Custom components:
 
-Custom components should inherit from `Component` and provide a `render()` function which returns JSX. The props are passed as `self.props` and children as `self.props["children"]`.
+A custom component can be any function that takes a single argument `props` and returns JSX.
 
 ```python
-from jsx import jsx, Component
+from jsx import jsx
 
-class Header(Component):
-    def render(self):
-        return <h1>{self.props["children"]}</h1>
+def Header(props):
+    return <h1>{props["children"]}</h1>
 
 header = <Header>"Title"</Header>
 print(header)

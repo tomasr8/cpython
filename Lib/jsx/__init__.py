@@ -5,17 +5,8 @@ from jsx.util import indent, flatten, dash_case
 __all__ = ["Component", "Fragment", "jsx"]
 
 
-class Component:
-    def __init__(self, props):
-        self.props = props
-
-    def render(self):
-        raise NotImplementedError
-
-
-class Fragment(Component):
-    def render(self):
-        return self.props["children"]
+def Fragment(props):
+    return props["children"]
 
 
 class JSXElement:
@@ -49,8 +40,7 @@ class JSXElement:
         return f"<{self.tag}{props}>\n{children}\n</{self.tag}>"
 
     def _convert_component(self):
-        component = self.tag({**self.props, "children": self.children})
-        rendered = component.render()
+        rendered = self.tag({**self.props, "children": self.children})
         match rendered:
             case None:
                 return ""
