@@ -14,7 +14,7 @@ def get_body(title, href):
         </body>
     )
 
-print(get_body())
+print(get_body("Title", "example.com"))
 ```
 
 ## What is it?
@@ -24,7 +24,7 @@ PyJSX is a fork of [CPython](github.com/python/cpython) which extends the gramma
 ## Installation
 
 ```bash
-git clone --branch jsx github.com/tomasr8/cpython.git
+git clone --branch jsx https://github.com/tomasr8/cpython.git
 cd cpython
 ./configure
 make
@@ -96,7 +96,7 @@ Custom components should inherit from `Component` and provide a `render()` funct
 from jsx import jsx, Component
 
 class Header(Component):
-    def render():
+    def render(self):
         return <h1>{self.props["children"]}</h1>
 
 header = <Header>"Title"</Header>
