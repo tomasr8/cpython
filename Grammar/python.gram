@@ -79,7 +79,7 @@ _PyPegen_parse(Parser *p)
 # ~
 #   Commit to the current alternative, even if it fails to parse.
 # &&e
-#   Eager parse e. The parser will not backtrack and will immediately 
+#   Eager parse e. The parser will not backtrack and will immediately
 #   fail with SyntaxError if e cannot be parsed.
 #
 
@@ -640,7 +640,7 @@ type_alias[stmt_ty]:
 # Type parameter declaration
 # --------------------------
 
-type_params[asdl_type_param_seq*]: 
+type_params[asdl_type_param_seq*]:
     | invalid_type_params
     | '[' t=type_param_seq ']' {
         CHECK_VERSION(asdl_type_param_seq *, 12, "Type parameter lists are", t) }
@@ -671,6 +671,8 @@ expressions[expr_ty]:
 expression[expr_ty] (memo):
     | invalid_expression
     | invalid_legacy_expression
+    | empty_arrowdef
+    | arrowdef
     | a=disjunction 'if' b=disjunction 'else' c=expression { _PyAST_IfExp(b, a, c, EXTRA) }
     | disjunction
     | lambdef
@@ -858,6 +860,14 @@ lambdef[expr_ty]:
     | 'lambda' a=[lambda_params] ':' b=expression {
         _PyAST_Lambda((a) ? a : CHECK(arguments_ty, _PyPegen_empty_arguments(p)), b, EXTRA) }
 
+arrowdef[expr_ty]:
+    | a=[lambda_params] '=>' b=expression {
+        _PyAST_Lambda((a) ? a : CHECK(arguments_ty, _PyPegen_empty_arguments(p)), b, EXTRA) }
+
+empty_arrowdef[expr_ty]:
+    | '(' ')' '=>' b=expression {
+        _PyAST_Lambda(CHECK(arguments_ty, _PyPegen_empty_arguments(p)), b, EXTRA) }
+
 lambda_params[arguments_ty]:
     | invalid_lambda_parameters
     | lambda_parameters
@@ -879,10 +889,12 @@ lambda_parameters[arguments_ty]:
 lambda_slash_no_default[asdl_arg_seq*]:
     | a[asdl_arg_seq*]=lambda_param_no_default+ '/' ',' { a }
     | a[asdl_arg_seq*]=lambda_param_no_default+ '/' &':' { a }
+    | a[asdl_arg_seq*]=lambda_param_no_default+ '/' &'=>' { a }
 
 lambda_slash_with_default[SlashWithDefault*]:
     | a=lambda_param_no_default* b=lambda_param_with_default+ '/' ',' { _PyPegen_slash_with_default(p, (asdl_arg_seq *)a, b) }
     | a=lambda_param_no_default* b=lambda_param_with_default+ '/' &':' { _PyPegen_slash_with_default(p, (asdl_arg_seq *)a, b) }
+    | a=lambda_param_no_default* b=lambda_param_with_default+ '/' &'=>' { _PyPegen_slash_with_default(p, (asdl_arg_seq *)a, b) }
 
 lambda_star_etc[StarEtc*]:
     | invalid_lambda_star_etc
@@ -899,12 +911,15 @@ lambda_kwds[arg_ty]:
 lambda_param_no_default[arg_ty]:
     | a=lambda_param ',' { a }
     | a=lambda_param &':' { a }
+    | a=lambda_param &'=>' { a }
 lambda_param_with_default[NameDefaultPair*]:
     | a=lambda_param c=default ',' { _PyPegen_name_default_pair(p, a, c, NULL) }
     | a=lambda_param c=default &':' { _PyPegen_name_default_pair(p, a, c, NULL) }
+    | a=lambda_param c=default &'=>' { _PyPegen_name_default_pair(p, a, c, NULL) }
 lambda_param_maybe_default[NameDefaultPair*]:
     | a=lambda_param c=default? ',' { _PyPegen_name_default_pair(p, a, c, NULL) }
     | a=lambda_param c=default? &':' { _PyPegen_name_default_pair(p, a, c, NULL) }
+    | a=lambda_param c=default? &'=>' { _PyPegen_name_default_pair(p, a, c, NULL) }
 lambda_param[arg_ty]: a=NAME { _PyAST_arg(a->v.Name.id, NULL, NULL, EXTRA) }
 
 # LITERALS
@@ -1313,13 +1328,13 @@ invalid_group:
 invalid_import:
     | a='import' ','.dotted_name+ 'from' dotted_name {
         RAISE_SYNTAX_ERROR_STARTING_FROM(a, "Did you mean to use 'from ... import ...' instead?") }
-    | 'import' token=NEWLINE { 
+    | 'import' token=NEWLINE {
         RAISE_SYNTAX_ERROR_STARTING_FROM(token, "Expected one or more names after 'import'") }
 
 invalid_import_from_targets:
     | import_from_as_names ',' NEWLINE {
         RAISE_SYNTAX_ERROR("trailing comma not allowed without surrounding parentheses") }
-    | token=NEWLINE { 
+    | token=NEWLINE {
         RAISE_SYNTAX_ERROR_STARTING_FROM(token, "Expected one or more names after 'import'") }
 
 invalid_with_stmt:
@@ -1445,5 +1460,5 @@ invalid_factor:
 invalid_type_params:
     | '[' token=']' {
         RAISE_SYNTAX_ERROR_STARTING_FROM(
-            token, 
+            token,
             "Type parameter list cannot be empty")}
