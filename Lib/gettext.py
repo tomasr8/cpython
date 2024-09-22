@@ -315,6 +315,18 @@ class NullTranslations:
         else:
             return msgid2
 
+    def gettext_lazy(self, message):
+        return LazyString(self.gettext, message)
+
+    def ngettext_lazy(self, msgid1, msgid2, n):
+        return LazyString(self.ngettext, msgid1, msgid2, n)
+
+    def pgettext_lazy(self, context, message):
+        return LazyString(self.pgettext, context, message)
+
+    def npgettext_lazy(self, context, msgid1, msgid2, n):
+        return LazyString(self.npgettext, context, msgid1, msgid2, n)
+
     def info(self):
         return self._info
 
@@ -655,3 +667,35 @@ def npgettext(context, msgid1, msgid2, n):
 # gettext.
 
 Catalog = translation
+
+
+class LazyString(str):
+    def __new__(cls, func, s, *args, **kwargs):
+        self = str.__new__(cls, s)
+        self._func = func
+        self._s = s
+        self._args = args
+        self._kwargs = kwargs
+        return self
+
+    def __str__(self):
+        return self._func(self._s, *self._args, **self._kwargs)
+
+    def __repr__(self):
+        return 'LazyString(%r, %r, %r, %r)' % (self._func, self._s, self._args, self._kwargs)
+
+
+def gettext_lazy(message):
+    return LazyString(gettext, message)
+
+
+def ngettext_lazy(msgid1, msgid2, n):
+    return LazyString(ngettext, msgid1, msgid2, n)
+
+
+def pgettext_lazy(context, message):
+    return LazyString(pgettext, context, message)
+
+
+def npgettext_lazy(context, msgid1, msgid2, n):
+    return LazyString(npgettext, context, msgid1, msgid2, n)
