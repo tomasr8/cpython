@@ -1803,7 +1803,7 @@ class UntokenizeTest(TestCase):
         u.prev_row = 2
         u.add_whitespace((4, 4))
         self.assertEqual(u.tokens, ['\\\n', '\\\n\\\n', '    '])
-        TestRoundtrip.check_roundtrip(self, 'a\n  b\n    c\n  \\\n  c\n')
+        TestRoundtrip.check_roundtrip(self, 'a\n  b\n    c\n  \\\n  c\n', strictly_equal=False)
 
     def test_iter_compat(self):
         u = tokenize.Untokenizer()
@@ -1821,7 +1821,7 @@ class UntokenizeTest(TestCase):
 
 class TestRoundtrip(TestCase):
 
-    def check_roundtrip(self, f):
+    def check_roundtrip(self, f, *, strictly_equal=True):
         """
         Test roundtrip for `untokenize`. `f` is an open file or a string.
         The source code in f is tokenized to both 5- and 2-tuples.
@@ -1838,6 +1838,13 @@ class TestRoundtrip(TestCase):
             code = f.encode('utf-8')
         else:
             code = f.read()
+
+        if strictly_equal:
+            readline = iter(code.splitlines(keepends=True)).__next__
+            # The BOM does not produce a token so there is no way to preserve it
+            code_without_bom = code.removeprefix(b'\xef\xbb\xbf')
+            self.assertEqual(code_without_bom, tokenize.untokenize(tokenize.tokenize(readline)))
+
         readline = iter(code.splitlines(keepends=True)).__next__
         tokens5 = list(tokenize.tokenize(readline))
         tokens2 = [tok[:2] for tok in tokens5]
