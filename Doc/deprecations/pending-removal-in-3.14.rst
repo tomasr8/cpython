@@ -49,7 +49,6 @@ Pending removal in Python 3.14
 
 * :mod:`importlib.abc` deprecated classes:
 
-  * :class:`!importlib.abc.ResourceReader`
   * :class:`!importlib.abc.Traversable`
   * :class:`!importlib.abc.TraversableResources`
 
