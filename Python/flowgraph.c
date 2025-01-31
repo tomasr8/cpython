@@ -2,6 +2,8 @@
 #include <stdbool.h>
 
 #include "Python.h"
+#include "opcode.h"
+#include "pycore_long.h"          // _PyLong
 #include "pycore_flowgraph.h"
 #include "pycore_compile.h"
 #include "pycore_intrinsics.h"
@@ -1704,6 +1706,231 @@ optimize_load_const(PyObject *const_cache, cfg_builder *g, PyObject *consts) {
     return SUCCESS;
 }
 
+/* Check whether a collection doesn't containing too much items (including
+   subcollections).  This protects from creating a constant that needs
+   too much time for calculating a hash.
+   "limit" is the maximal number of items.
+   Returns the negative number if the total number of items exceeds the
+   limit.  Otherwise returns the limit minus the total number of items.
+*/
+
+static Py_ssize_t
+check_complexity(PyObject *obj, Py_ssize_t limit)
+{
+    if (PyTuple_Check(obj)) {
+        Py_ssize_t i;
+        limit -= PyTuple_GET_SIZE(obj);
+        for (i = 0; limit >= 0 && i < PyTuple_GET_SIZE(obj); i++) {
+            limit = check_complexity(PyTuple_GET_ITEM(obj, i), limit);
+        }
+        return limit;
+    }
+    return limit;
+}
+
+#define MAX_INT_SIZE           128  /* bits */
+#define MAX_COLLECTION_SIZE    256  /* items */
+#define MAX_STR_SIZE          4096  /* characters */
+#define MAX_TOTAL_ITEMS       1024  /* including nested collections */
+
+static PyObject *
+safe_multiply(PyObject *v, PyObject *w)
+{
+    if (PyLong_Check(v) && PyLong_Check(w) &&
+        !_PyLong_IsZero((PyLongObject *)v) && !_PyLong_IsZero((PyLongObject *)w)
+    ) {
+        int64_t vbits = _PyLong_NumBits(v);
+        int64_t wbits = _PyLong_NumBits(w);
+        assert(vbits >= 0);
+        assert(wbits >= 0);
+        if (vbits + wbits > MAX_INT_SIZE) {
+            return NULL;
+        }
+    }
+    else if (PyLong_Check(v) && PyTuple_Check(w)) {
+        Py_ssize_t size = PyTuple_GET_SIZE(w);
+        if (size) {
+            long n = PyLong_AsLong(v);
+            if (n < 0 || n > MAX_COLLECTION_SIZE / size) {
+                return NULL;
+            }
+            if (n && check_complexity(w, MAX_TOTAL_ITEMS / n) < 0) {
+                return NULL;
+            }
+        }
+    }
+    else if (PyLong_Check(v) && (PyUnicode_Check(w) || PyBytes_Check(w))) {
+        Py_ssize_t size = PyUnicode_Check(w) ? PyUnicode_GET_LENGTH(w) :
+                                               PyBytes_GET_SIZE(w);
+        if (size) {
+            long n = PyLong_AsLong(v);
+            if (n < 0 || n > MAX_STR_SIZE / size) {
+                return NULL;
+            }
+        }
+    }
+    else if (PyLong_Check(w) &&
+             (PyTuple_Check(v) || PyUnicode_Check(v) || PyBytes_Check(v)))
+    {
+        return safe_multiply(w, v);
+    }
+
+    return PyNumber_Multiply(v, w);
+}
+
+static PyObject *
+safe_power(PyObject *v, PyObject *w)
+{
+    if (PyLong_Check(v) && PyLong_Check(w) &&
+        !_PyLong_IsZero((PyLongObject *)v) && _PyLong_IsPositive((PyLongObject *)w)
+    ) {
+        int64_t vbits = _PyLong_NumBits(v);
+        size_t wbits = PyLong_AsSize_t(w);
+        assert(vbits >= 0);
+        if (wbits == (size_t)-1) {
+            return NULL;
+        }
+        if ((uint64_t)vbits > MAX_INT_SIZE / wbits) {
+            return NULL;
+        }
+    }
+
+    return PyNumber_Power(v, w, Py_None);
+}
+
+static PyObject *
+safe_lshift(PyObject *v, PyObject *w)
+{
+    if (PyLong_Check(v) && PyLong_Check(w) &&
+        !_PyLong_IsZero((PyLongObject *)v) && !_PyLong_IsZero((PyLongObject *)w)
+    ) {
+        int64_t vbits = _PyLong_NumBits(v);
+        size_t wbits = PyLong_AsSize_t(w);
+        assert(vbits >= 0);
+        if (wbits == (size_t)-1) {
+            printf("NULL1 safe_lshift: %s %s\n", Py_TYPE(v)->tp_name, Py_TYPE(w)->tp_name);
+            return NULL;
+        }
+        if (wbits > MAX_INT_SIZE || (uint64_t)vbits > MAX_INT_SIZE - wbits) {
+            printf("NULL2 safe_lshift: %s %s\n", Py_TYPE(v)->tp_name, Py_TYPE(w)->tp_name);
+            return NULL;
+        }
+    }
+
+    printf("safe_lshift: %s %s\n", Py_TYPE(v)->tp_name, Py_TYPE(w)->tp_name);
+    return PyNumber_Lshift(v, w);
+}
+
+static PyObject *
+safe_mod(PyObject *v, PyObject *w)
+{
+    if (PyUnicode_Check(v) || PyBytes_Check(v)) {
+        return NULL;
+    }
+
+    return PyNumber_Remainder(v, w);
+}
+
+static void fold_binop(PyObject *const_cache, basicblock *bb, int binop_i, PyObject *consts) {
+    const int oparg = bb->b_instr[binop_i].i_oparg;
+    PyObject *lv, *rv;
+    int i = binop_i - 1;
+
+    while(i >= 0 && bb->b_instr[i].i_opcode == NOP) {
+        i--;
+    }
+
+    if (i < 0 || !loads_const(bb->b_instr[i].i_opcode)) {
+        return;
+    }
+
+    const int right_i = i;
+    rv = get_const_value(bb->b_instr[i].i_opcode, bb->b_instr[i].i_oparg, consts);
+    if(rv == NULL) {
+        return;
+    }
+
+    i--;
+
+    while(i >= 0 && bb->b_instr[i].i_opcode == NOP) {
+        i--;
+    }
+
+    if (i < 0 || !loads_const(bb->b_instr[i].i_opcode)) {
+        return;
+    }
+
+    const int left_i = i;
+    lv = get_const_value(bb->b_instr[i].i_opcode, bb->b_instr[i].i_oparg, consts);
+    if(rv == NULL) {
+        return;
+    }
+
+    PyObject *newval = NULL;
+
+    switch (oparg) {
+        case NB_ADD:
+            newval = PyNumber_Add(lv, rv);
+            break;
+        case NB_SUBTRACT:
+            newval = PyNumber_Subtract(lv, rv);
+            break;
+        case NB_MULTIPLY:
+            newval = safe_multiply(lv, rv);
+            break;
+        case NB_TRUE_DIVIDE:
+            newval = PyNumber_TrueDivide(lv, rv);
+            break;
+        case NB_FLOOR_DIVIDE:
+            newval = PyNumber_FloorDivide(lv, rv);
+            break;
+        case NB_REMAINDER:
+            newval = safe_mod(lv, rv);
+            break;
+        case NB_POWER:
+            newval = safe_power(lv, rv);
+            break;
+        case NB_LSHIFT:
+            newval = safe_lshift(lv, rv);
+            break;
+        case NB_RSHIFT:
+            newval = PyNumber_Rshift(lv, rv);
+            break;
+        case NB_OR:
+            newval = PyNumber_Or(lv, rv);
+            break;
+        case NB_XOR:
+            newval = PyNumber_Xor(lv, rv);
+            break;
+        case NB_AND:
+            newval = PyNumber_And(lv, rv);
+            break;
+        default:
+            printf("Unknown binary operator %d\n", oparg);
+            return;
+        // No builtin constants implement the following operators
+        // case MatMult:
+        //     return 1;
+        // No default case, so the compiler will emit a warning if new binary
+        // operators are added without being handled here
+    }
+
+    // Even if no new value was calculated, make_const may still
+    // need to clear an error (e.g. for division by zero)
+    if (newval == NULL) {
+        if (PyErr_ExceptionMatches(PyExc_KeyboardInterrupt)) {
+            return;
+        }
+        PyErr_Clear();
+        return;
+    }
+
+    int index = add_const(newval, consts, const_cache);
+    INSTR_SET_OP0(&bb->b_instr[binop_i], NOP);
+    INSTR_SET_OP0(&bb->b_instr[right_i], NOP);
+    INSTR_SET_OP1(&bb->b_instr[left_i], LOAD_CONST, index);
+}
+
 static int
 optimize_basic_block(PyObject *const_cache, basicblock *bb, PyObject *consts)
 {
@@ -1874,6 +2101,9 @@ optimize_basic_block(PyObject *const_cache, basicblock *bb, PyObject *consts)
                     INSTR_SET_OP0(&bb->b_instr[i + 1], NOP);
                     continue;
                 }
+                break;
+            case BINARY_OP:
+                fold_binop(const_cache, bb, i, consts);
                 break;
             case CALL_INTRINSIC_1:
                 // for _ in (*foo, *bar) -> for _ in [*foo, *bar]

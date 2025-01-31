@@ -81,7 +81,9 @@ fold_unaryop(expr_ty node, PyArena *arena, _PyASTOptimizeState *state)
 {
     expr_ty arg = node->v.UnaryOp.operand;
 
+    // if (arg->kind != Constant_kind || node->v.UnaryOp.op == USub) {
     if (arg->kind != Constant_kind) {
+
         /* Fold not into comparison */
         if (node->v.UnaryOp.op == Not && arg->kind == Compare_kind &&
                 asdl_seq_LEN(arg->v.Compare.ops) == 1) {
@@ -462,6 +464,7 @@ optimize_format(expr_ty node, PyObject *fmt, asdl_expr_seq *elts, PyArena *arena
 static int
 fold_binop(expr_ty node, PyArena *arena, _PyASTOptimizeState *state)
 {
+    return 1;
     expr_ty lhs, rhs;
     lhs = node->v.BinOp.left;
     rhs = node->v.BinOp.right;

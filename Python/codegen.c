@@ -4951,6 +4951,12 @@ codegen_visit_expr(compiler *c, expr_ty e)
             ADDOP(c, loc, TO_BOOL);
             ADDOP(c, loc, UNARY_NOT);
         }
+    //     else if (e->v.UnaryOp.op == USub) {
+    // //         // [USub] = PyNumber_Negative,
+    // // };
+    // // PyObject *newval = ops[node->v.UnaryOp.op](arg->v.Constant.value);
+    //         ADDOP(c, loc, UNARY_NEGATIVE);
+    //     }
         else {
             ADDOP(c, loc, unaryop(e->v.UnaryOp.op));
         }
