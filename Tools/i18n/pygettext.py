@@ -296,7 +296,6 @@ DEFAULTKEYWORDS = {
 
 def parse_spec(spec):
     """Parse a keyword spec string into a dictionary.
-
     The keyword spec format defines the name of the gettext function and the
     positions of the arguments that correspond to msgid, msgid_plural, and
     msgctxt. The format is as follows:
@@ -650,7 +649,7 @@ def main():
         # defaults
         extractall = 0 # FIXME: currently this option has no effect at all.
         escape = 0
-        keywords = []
+        keywords = set()
         outpath = ''
         outfile = 'messages.pot'
         writelocations = 1
@@ -684,7 +683,7 @@ def main():
         elif opt in ('-D', '--docstrings'):
             options.docstrings = 1
         elif opt in ('-k', '--keyword'):
-            options.keywords.append(arg)
+            options.keywords.add(arg)
         elif opt in ('-K', '--no-default-keywords'):
             no_default_keywords = True
         elif opt in ('-n', '--add-location'):
