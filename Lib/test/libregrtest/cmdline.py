@@ -178,6 +178,7 @@ class Namespace(argparse.Namespace):
         self._add_python_opts = True
         self.xmlpath = None
         self.single_process = False
+        self.snapshot_update = False
 
         super().__init__(**kwargs)
 
@@ -370,6 +371,8 @@ def _create_parser():
     group.add_argument('--dont-add-python-opts', dest='_add_python_opts',
                        action='store_false',
                        help="internal option, don't use it")
+    group.add_argument('--snapshot-update', action='store_true',
+                       help='update test snapshots')
     return parser
 
 

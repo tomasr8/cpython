@@ -5,6 +5,7 @@ import os.path
 import unittest
 from test import support
 from test.support import import_helper
+from pathlib import Path
 
 
 if not support.has_subprocess_support:
@@ -41,3 +42,23 @@ def import_tool(toolname):
 
 def load_tests(*args):
     return support.load_package_tests(os.path.dirname(__file__), *args)
+
+
+class SnapshotTestCase(unittest.TestCase):
+    # def __init__(self):
+    #     self.path = None
+
+    def _is_update(self):
+        import sys
+        return any(arg == '--snapshot-update' for arg in sys.argv)
+
+    def assert_snapshot_equal(self, snapshot_dir, actual, snapshot):
+        path = Path(snapshot_dir) / snapshot
+        if self._is_update():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(actual, encoding='utf-8')
+            msg = f"Snapshot updated: {path}"
+            self.fail(msg)
+        else:
+            expected = path.read_text(encoding='utf-8')
+            self.assertEqual(expected, actual)

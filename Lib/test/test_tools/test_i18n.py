@@ -8,7 +8,7 @@ from textwrap import dedent
 from pathlib import Path
 
 from test.support.script_helper import assert_python_ok
-from test.test_tools import skip_if_missing, toolsdir
+from test.test_tools import SnapshotTestCase, skip_if_missing, toolsdir
 from test.support.os_helper import temp_cwd, temp_dir
 
 
@@ -42,7 +42,7 @@ def normalize_POT_file(pot):
     return pot
 
 
-class Test_pygettext(unittest.TestCase):
+class Test_pygettext(SnapshotTestCase):
     """Tests for the pygettext.py tool"""
 
     script = Path(toolsdir, 'i18n', 'pygettext.py')
@@ -411,6 +411,17 @@ class Test_pygettext(unittest.TestCase):
             self.assertIn(f'msgid "{text1}"', data)
             self.assertIn(f'msgid "{text2}"', data)
             self.assertNotIn(text3, data)
+
+    def test_omit_header(self):
+        path = DATA_DIR / 'no-header.py'
+        contents = path.read_bytes()
+        with temp_cwd(None):
+            Path(path.name).write_bytes(contents)
+            res = assert_python_ok('-Xutf8', Test_pygettext.script, '-o', '-',
+                                   '--omit-header', path.name)
+        self.assertEqual(res.err, b'')
+        out = res.out.decode('utf-8')
+        self.assert_snapshot_equal(DATA_DIR, out, 'no-header.pot')
 
 
 def update_POT_snapshots():
