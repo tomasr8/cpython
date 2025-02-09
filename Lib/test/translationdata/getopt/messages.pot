@@ -1,0 +1,18 @@
+msgid "option --%s requires argument"
+msgstr ""
+
+msgid "option --%s must not have an argument"
+msgstr ""
+
+msgid "option --%s not recognized"
+msgstr ""
+
+msgid "option --%s not a unique prefix; possible options: %s"
+msgstr ""
+
+msgid "option -%s requires argument"
+msgstr ""
+
+msgid "option -%s not recognized"
+msgstr ""
+

@@ -87,7 +87,8 @@ class Test_pygettext(unittest.TestCase):
         self.maxDiff = None
         self.assertEqual(normalize_POT_file(expected), normalize_POT_file(actual))
 
-    def extract_from_str(self, module_content, *, args=(), strict=True):
+    def extract_from_str(self, module_content, *, args=(), strict=True,
+                         full_output=False):
         """Return all msgids extracted from module_content."""
         filename = 'test.py'
         with temp_cwd(None):
@@ -98,7 +99,7 @@ class Test_pygettext(unittest.TestCase):
                 self.assertEqual(res.err, b'')
             with open('messages.pot', encoding='utf-8') as fp:
                 data = fp.read()
-        return self.get_msgids(data)
+        return data if full_output else self.get_msgids(data)
 
     def extract_docstrings_from_str(self, module_content):
         """Return all docstrings extracted from module_content."""
@@ -406,6 +407,19 @@ class Test_pygettext(unittest.TestCase):
             self.assertIn(f'msgid "{text1}"', data)
             self.assertIn(f'msgid "{text2}"', data)
             self.assertNotIn(text3, data)
+
+    def test_omit_header(self):
+        source = '_("foo")'
+        data = self.extract_from_str(
+            source,
+            args=('--no-location', '--omit-header'),
+            full_output=True)
+
+        self.assertEqual(dedent("""\
+        msgid "foo"
+        msgstr ""
+
+        """), data)
 
 
 def update_POT_snapshots():

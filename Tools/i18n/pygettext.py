@@ -548,9 +548,10 @@ class TokenEater:
 def write_pot_file(messages, options, fp):
     timestamp = time.strftime('%Y-%m-%d %H:%M%z')
     encoding = fp.encoding if fp.encoding else 'UTF-8'
-    print(pot_header % {'time': timestamp, 'version': __version__,
-                        'charset': encoding,
-                        'encoding': '8bit'}, file=fp)
+    if not options.omit_header:
+        print(pot_header % {'time': timestamp, 'version': __version__,
+                            'charset': encoding,
+                            'encoding': '8bit'}, file=fp)
 
     # Sort locations within each message by filename and lineno
     sorted_keys = [
@@ -607,7 +608,7 @@ def main():
              'keyword=', 'no-default-keywords',
              'add-location', 'no-location', 'output=', 'output-dir=',
              'style=', 'verbose', 'version', 'width=', 'exclude-file=',
-             'docstrings', 'no-docstrings',
+             'docstrings', 'no-docstrings', 'omit-header'
              ])
     except getopt.error as msg:
         usage(1, msg)
@@ -630,6 +631,7 @@ def main():
         excludefilename = ''
         docstrings = 0
         nodocstrings = {}
+        omit_header = False
 
     options = Options()
     locations = {'gnu' : options.GNU,
@@ -686,6 +688,8 @@ def main():
                     options.nodocstrings[line[:-1]] = 1
             finally:
                 fp.close()
+        elif opt in ('--omit-header',):
+            options.omit_header = True
 
     # calculate escapes
     make_escapes(not options.escape)

@@ -1,0 +1,48 @@
+msgid "no such option: %s"
+msgstr ""
+
+msgid "ambiguous option: %s (%s?)"
+msgstr ""
+
+msgid ""
+"Usage: %s\n"
+msgstr ""
+
+msgid "Usage"
+msgstr ""
+
+msgid "integer"
+msgstr ""
+
+msgid "floating-point"
+msgstr ""
+
+msgid "complex"
+msgstr ""
+
+msgid "option %s: invalid %s value: %r"
+msgstr ""
+
+msgid "option %s: invalid choice: %r (choose from %s)"
+msgstr ""
+
+msgid "show this help message and exit"
+msgstr ""
+
+msgid "show program's version number and exit"
+msgstr ""
+
+msgid "%prog [options]"
+msgstr ""
+
+msgid "%(option)s option requires %(number)d argument"
+msgid_plural "%(option)s option requires %(number)d arguments"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "%s option does not take a value"
+msgstr ""
+
+msgid "Options"
+msgstr ""
+

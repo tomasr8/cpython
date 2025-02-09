@@ -1,0 +1,102 @@
+msgid "%(heading)s:"
+msgstr ""
+
+msgid "usage: "
+msgstr ""
+
+msgid " (default: %(default)s)"
+msgstr ""
+
+msgid "argument %(argument_name)s: %(message)s"
+msgstr ""
+
+msgid "show program's version number and exit"
+msgstr ""
+
+msgid "unknown parser %(parser_name)r (choices: %(choices)s)"
+msgstr ""
+
+msgid "command '%(parser_name)s' is deprecated"
+msgstr ""
+
+msgid "argument \"-\" with mode %r"
+msgstr ""
+
+msgid "can't open '%(filename)s': %(error)s"
+msgstr ""
+
+msgid "conflicting option string: %s"
+msgid_plural "conflicting option strings: %s"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "positional arguments"
+msgstr ""
+
+msgid "options"
+msgstr ""
+
+msgid "show this help message and exit"
+msgstr ""
+
+msgid "subcommands"
+msgstr ""
+
+msgid "unrecognized arguments: %s"
+msgstr ""
+
+msgid "not allowed with argument %s"
+msgstr ""
+
+msgid "ambiguous option: %(option)s could match %(matches)s"
+msgstr ""
+
+msgid "ignored explicit argument %r"
+msgstr ""
+
+msgid "option '%(option)s' is deprecated"
+msgstr ""
+
+msgid "argument '%(argument_name)s' is deprecated"
+msgstr ""
+
+msgid "the following arguments are required: %s"
+msgstr ""
+
+msgid "one of the arguments %s is required"
+msgstr ""
+
+msgid "expected one argument"
+msgstr ""
+
+msgid "expected at most one argument"
+msgstr ""
+
+msgid "expected at least one argument"
+msgstr ""
+
+msgid "expected %s argument"
+msgid_plural "expected %s arguments"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "unexpected option string: %s"
+msgstr ""
+
+msgid "invalid %(type)s value: %(value)r"
+msgstr ""
+
+msgid "invalid choice: %(value)r (choose from %(choices)s)"
+msgstr ""
+
+msgid "invalid choice: %(value)r, maybe you meant %(closest)r? (choose from %(choices)s)"
+msgstr ""
+
+msgid ""
+"%(prog)s: error: %(message)s\n"
+msgstr ""
+
+msgid ""
+"%(prog)s: warning: %(message)s\n"
+msgstr ""
+
