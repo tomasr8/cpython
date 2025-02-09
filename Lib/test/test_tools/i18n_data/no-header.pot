@@ -1,0 +1,4 @@
+#: no-header.py:3
+msgid "foo"
+msgstr ""
+

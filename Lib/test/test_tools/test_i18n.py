@@ -375,7 +375,12 @@ class Test_pygettext(unittest.TestCase):
                 contents = input_file.read_text(encoding='utf-8')
                 with temp_cwd(None):
                     Path(input_file.name).write_text(contents)
-                    assert_python_ok('-Xutf8', self.script, '--docstrings', input_file.name)
+                    if input_file.name == 'no-header.py':
+                        assert_python_ok('-Xutf8', self.script, '--docstrings',
+                                         '--omit-header', input_file.name)
+                    else:
+                        assert_python_ok('-Xutf8', self.script, '--docstrings',
+                                         input_file.name)
                     output = Path('messages.pot').read_text(encoding='utf-8')
 
                 expected = output_file.read_text(encoding='utf-8')
@@ -414,7 +419,12 @@ def update_POT_snapshots():
         contents = input_file.read_bytes()
         with temp_cwd(None):
             Path(input_file.name).write_bytes(contents)
-            assert_python_ok('-Xutf8', Test_pygettext.script, '--docstrings', input_file.name)
+            if input_file.name == 'no-header.py':
+                assert_python_ok('-Xutf8', Test_pygettext.script, '--docstrings',
+                                 '--omit-header', input_file.name)
+            else:
+                assert_python_ok('-Xutf8', Test_pygettext.script, '--docstrings',
+                                 input_file.name)
             output = Path('messages.pot').read_text(encoding='utf-8')
 
         output = normalize_POT_file(output)
