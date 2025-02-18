@@ -2372,6 +2372,13 @@ Invalid expressions in type scopes:
     >>> f(x = 5, *:)
     Traceback (most recent call last):
     SyntaxError: Invalid star expression
+
+Duplicate mapping key in match case:
+
+    >>> match x:
+    ...     case {0: y, 0: z}: ...
+    Traceback (most recent call last):
+    SyntaxError: mapping pattern checks duplicate key (0)
 """
 
 import re
