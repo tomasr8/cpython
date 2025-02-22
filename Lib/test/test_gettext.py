@@ -36,6 +36,8 @@ cyBmaWNoZXJvcyAoY29udGV4dCkAYmFjb24Ad2luayB3aW5rIChpbiAibXkgY29udGV4dCIpAHdp
 bmsgd2luayAoaW4gIm15IG90aGVyIGNvbnRleHQiKQB3aW5rIHdpbmsA
 '''
 
+GNU_MO_DATA_BAD_MAGIC_NUMBER = b'12345678=='
+
 # This data contains an invalid major version number (5)
 # An unexpected major version number should be treated as an error when
 # parsing a .mo file
@@ -108,6 +110,7 @@ bGUKR2VuZXJhdGVkLUJ5OiBweWdldHRleHQucHkgMS4zCgA=
 
 LOCALEDIR = os.path.join('xx', 'LC_MESSAGES')
 MOFILE = os.path.join(LOCALEDIR, 'gettext.mo')
+MOFILE_BAD_MAGIC_NUMBER = os.path.join(LOCALEDIR, 'gettext_bad_magic_number.mo')
 MOFILE_BAD_MAJOR_VERSION = os.path.join(LOCALEDIR, 'gettext_bad_major_version.mo')
 MOFILE_BAD_MINOR_VERSION = os.path.join(LOCALEDIR, 'gettext_bad_minor_version.mo')
 UMOFILE = os.path.join(LOCALEDIR, 'ugettext.mo')
@@ -128,6 +131,8 @@ class GettextBaseTest(unittest.TestCase):
             os.makedirs(LOCALEDIR)
         with open(MOFILE, 'wb') as fp:
             fp.write(base64.decodebytes(GNU_MO_DATA))
+        with open(MOFILE_BAD_MAGIC_NUMBER, 'wb') as fp:
+            fp.write(base64.decodebytes(GNU_MO_DATA_BAD_MAGIC_NUMBER))
         with open(MOFILE_BAD_MAJOR_VERSION, 'wb') as fp:
             fp.write(base64.decodebytes(GNU_MO_DATA_BAD_MAJOR_VERSION))
         with open(MOFILE_BAD_MINOR_VERSION, 'wb') as fp:
@@ -221,6 +226,16 @@ class GettextTestCase2(GettextBaseTest):
 
     def test_textdomain(self):
         self.assertEqual(gettext.textdomain(), 'gettext')
+
+    def test_bad_magic_number(self):
+        with open(MOFILE_BAD_MAGIC_NUMBER, 'rb') as fp:
+            with self.assertRaises(OSError) as cm:
+                gettext.GNUTranslations(fp)
+
+            exception = cm.exception
+            self.assertEqual(exception.errno, 0)
+            self.assertEqual(exception.strerror, "Bad magic number")
+            self.assertEqual(exception.filename, MOFILE_BAD_MAGIC_NUMBER)
 
     def test_bad_major_version(self):
         with open(MOFILE_BAD_MAJOR_VERSION, 'rb') as fp:
