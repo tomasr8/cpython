@@ -85,6 +85,12 @@ ciBUQUgKdHJnZ3JrZyB6cmZmbnRyIHBuZ255YnQgeXZvZW5lbC4AYmFjb24Ad2luayB3aW5rAA==
 '''
 
 
+GNU_MO_DATA_CORRUPT = b'''\
+3hIElQAAAAAJAAAAHAAAAGQAAAAAAAAArAAAAAAAAACsAAAAFQAAAK0AAAAjAAAAwwAAAKEAAADn
+AAAAMAAAAIkBAAAHAAAAugEAABYAAADCAQAAHAAAANkBAAALAAAA9gEAAEIBAAACAgAAFgAAAEUD
+'''
+
+
 UMO_DATA = b'''\
 3hIElQAAAAADAAAAHAAAADQAAAAAAAAAAAAAAAAAAABMAAAABAAAAE0AAAAQAAAAUgAAAA8BAABj
 AAAABAAAAHMBAAAWAAAAeAEAAABhYsOeAG15Y29udGV4dMOeBGFiw54AUHJvamVjdC1JZC1WZXJz
@@ -110,6 +116,7 @@ LOCALEDIR = os.path.join('xx', 'LC_MESSAGES')
 MOFILE = os.path.join(LOCALEDIR, 'gettext.mo')
 MOFILE_BAD_MAJOR_VERSION = os.path.join(LOCALEDIR, 'gettext_bad_major_version.mo')
 MOFILE_BAD_MINOR_VERSION = os.path.join(LOCALEDIR, 'gettext_bad_minor_version.mo')
+MOFILE_CORRUPT = os.path.join(LOCALEDIR, 'gettext_corrupt.mo')
 UMOFILE = os.path.join(LOCALEDIR, 'ugettext.mo')
 MMOFILE = os.path.join(LOCALEDIR, 'metadata.mo')
 
@@ -132,6 +139,8 @@ class GettextBaseTest(unittest.TestCase):
             fp.write(base64.decodebytes(GNU_MO_DATA_BAD_MAJOR_VERSION))
         with open(MOFILE_BAD_MINOR_VERSION, 'wb') as fp:
             fp.write(base64.decodebytes(GNU_MO_DATA_BAD_MINOR_VERSION))
+        with open(MOFILE_CORRUPT, 'wb') as fp:
+            fp.write(base64.decodebytes(GNU_MO_DATA_CORRUPT))
         with open(UMOFILE, 'wb') as fp:
             fp.write(base64.decodebytes(UMO_DATA))
         with open(MMOFILE, 'wb') as fp:
@@ -221,6 +230,16 @@ class GettextTestCase2(GettextBaseTest):
 
     def test_textdomain(self):
         self.assertEqual(gettext.textdomain(), 'gettext')
+
+    def test_corrupt_file(self):
+        with open(MOFILE_CORRUPT, 'rb') as fp:
+            with self.assertRaises(OSError) as cm:
+                gettext.GNUTranslations(fp)
+
+            exception = cm.exception
+            self.assertEqual(exception.errno, 0)
+            self.assertEqual(exception.strerror, "File is corrupt")
+            self.assertEqual(exception.filename, MOFILE_CORRUPT)
 
     def test_bad_major_version(self):
         with open(MOFILE_BAD_MAJOR_VERSION, 'rb') as fp:
