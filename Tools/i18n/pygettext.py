@@ -145,6 +145,7 @@ import glob
 import importlib.machinery
 import importlib.util
 import os
+import re
 import sys
 import time
 import tokenize
@@ -185,6 +186,13 @@ def usage(code, msg=''):
     sys.exit(code)
 
 
+WORD_SEP = re.compile('('
+                      r'\s+|'                                 # any whitespace
+                      r'[^\s\w]*\w+[a-zA-Z]-(?=\w+[a-zA-Z])|'  # hyphenated words
+                      r'(?<=[\w\!\"\'\&\.\,\?])-{2,}(?=\w)'   # em-dash
+                      ')')
+
+
 def make_escapes(pass_nonascii):
     global escapes, escape
     if pass_nonascii:
@@ -214,21 +222,34 @@ def escape_nonascii(s, encoding):
     return ''.join(escapes[b] for b in s.encode(encoding))
 
 
-def normalize(s, encoding):
+def _fits_on_first_line(escaped, width):
+    return len('msgid ') + len('""') + len(escaped) <= width
+
+
+def normalize(s, encoding, width=76):
     # This converts the various Python string types into a format that is
     # appropriate for .po files, namely much closer to C style.
-    lines = s.split('\n')
-    if len(lines) == 1:
-        s = '"' + escape(s, encoding) + '"'
-    else:
-        if not lines[-1]:
-            del lines[-1]
-            lines[-1] = lines[-1] + '\n'
-        for i in range(len(lines)):
-            lines[i] = escape(lines[i], encoding)
-        lineterm = '\\n"\n"'
-        s = '""\n"' + lineterm.join(lines) + '"'
-    return s
+    lines = [escape(line, encoding) for line in s.split('\n')]
+    if len(lines) == 1 and _fits_on_first_line(lines[0], width):
+        return f'"{lines[0]}"'
+    
+    lines = [line + r'\n' for line in lines[:-1]] + [lines[-1]]
+    if not lines[-1]:
+        lines.pop()
+
+    lines = ['""'] + [wrap(line, width) for line in lines]
+    return '\n'.join(lines)
+
+
+def wrap(s, width):
+    lines = []
+    chunks = WORD_SEP.split(s)
+    while chunks:
+        line = chunks.pop(0)
+        while chunks and len(line) + len(chunks[0]) <= width - 2:
+            line += chunks.pop(0)
+        lines.append(f'"{line}"')
+    return '\n'.join(lines)
 
 
 def containsAny(str, set):
