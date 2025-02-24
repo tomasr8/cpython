@@ -148,6 +148,7 @@ import os
 import sys
 import time
 import tokenize
+from collections import defaultdict
 from dataclasses import dataclass, field
 from io import BytesIO
 from operator import itemgetter
@@ -282,15 +283,15 @@ def getFilesForName(name):
 # Key is the function name, value is a dictionary mapping argument positions to the
 # type of the argument. The type is one of 'msgid', 'msgid_plural', or 'msgctxt'.
 DEFAULTKEYWORDS = {
-    '_': {0: 'msgid'},
-    'gettext': {0: 'msgid'},
-    'ngettext': {0: 'msgid', 1: 'msgid_plural'},
-    'pgettext': {0: 'msgctxt', 1: 'msgid'},
-    'npgettext': {0: 'msgctxt', 1: 'msgid', 2: 'msgid_plural'},
-    'dgettext': {1: 'msgid'},
-    'dngettext': {1: 'msgid', 2: 'msgid_plural'},
-    'dpgettext': {1: 'msgctxt', 2: 'msgid'},
-    'dnpgettext': {1: 'msgctxt', 2: 'msgid', 3: 'msgid_plural'},
+    '_': {'msgid': 0},
+    'gettext': {'msgid': 0},
+    'ngettext': {'msgid': 0, 'msgid_plural': 1},
+    'pgettext': {'msgctxt': 0, 'msgid': 1},
+    'npgettext': {'msgctxt': 0, 'msgid': 1, 'msgid_plural': 2},
+    'dgettext': {'msgctxt': 0, 'msgid': 1},
+    'dngettext': {'msgctxt': 0, 'msgid': 1, 'msgid_plural': 2},
+    'dpgettext': {'msgctxt': 0, 'msgid': 1},
+    'dnpgettext': {'msgctxt': 0, 'msgid': 1, 'msgid_plural': 2},
 }
 
 
@@ -326,7 +327,7 @@ def parse_spec(spec):
     parts = spec.strip().split(':', 1)
     if len(parts) == 1:
         name = parts[0]
-        return name, {0: 'msgid'}
+        return name, {'msgid': 0}
 
     name, args = parts
     if not args:
@@ -336,39 +337,34 @@ def parse_spec(spec):
     result = {}
     for arg in args.split(','):
         arg = arg.strip()
-        is_context = False
-        if arg.endswith('c'):
-            is_context = True
+        is_context = arg.endswith('c')
+        if is_context:
             arg = arg[:-1]
 
         try:
             pos = int(arg) - 1
         except ValueError as e:
             raise ValueError(f'Invalid keyword spec {spec!r}: '
-                             'position is not an integer') from e
+                             '{arg!r} is not an integer') from e
 
         if pos < 0:
             raise ValueError(f'Invalid keyword spec {spec!r}: '
                              'argument positions must be strictly positive')
 
-        if pos in result:
+        if is_context:
+            if 'msgctxt' in result:
+                raise ValueError(f'Invalid keyword spec {spec!r}: '
+                                 'msgctxt can only appear once')
+            result['msgctxt'] = pos
+        elif 'msgid' not in result:
+            result['msgid'] = pos
+        elif 'msgid_plural' not in result:
+            result['msgid_plural'] = pos
+        else:
             raise ValueError(f'Invalid keyword spec {spec!r}: '
                              'duplicate positions')
 
-        if is_context:
-            if 'msgctxt' in result.values():
-                raise ValueError(f'Invalid keyword spec {spec!r}: '
-                                 'msgctxt can only appear once')
-            result[pos] = 'msgctxt'
-        elif 'msgid' not in result.values():
-            result[pos] = 'msgid'
-        elif 'msgid_plural' not in result.values():
-            result[pos] = 'msgid_plural'
-        else:
-            raise ValueError(f'Invalid keyword spec {spec!r}: '
-                             'too many positions')
-
-    if 'msgid' not in result.values() and 'msgctxt' in result.values():
+    if 'msgid' not in result and 'msgctxt' in result:
         raise ValueError(f'Invalid keyword spec {spec!r}: '
                          'msgctxt cannot appear without msgid')
 
@@ -458,37 +454,46 @@ class GettextVisitor(ast.NodeVisitor):
 
     def _extract_message(self, node):
         func_name = self._get_func_name(node)
-        spec = self.options.keywords.get(func_name)
-        if spec is None:
-            return
+        specs = self.options.keywords[func_name]
+        for spec in specs:
+            extracted = self._extract_message_with_spec(node, spec)
+            if extracted:
+                break
 
-        max_index = max(spec)
+    def _extract_message_with_spec(self, node, spec):
+        """Extract a gettext call with the given spec.
+
+        Return True if the gettext call was successfully extracted, False
+        otherwise.
+        """
+        max_index = max(spec.values())
         has_var_positional = any(isinstance(arg, ast.Starred) for
                                  arg in node.args[:max_index+1])
         if has_var_positional:
             print(f'*** {self.filename}:{node.lineno}: Variable positional '
                   f'arguments are not allowed in gettext calls', file=sys.stderr)
-            return
+            return False
 
         if max_index >= len(node.args):
             print(f'*** {self.filename}:{node.lineno}: Expected at least '
-                  f'{max(spec) + 1} positional argument(s) in gettext call, '
+                  f'{max_index + 1} positional argument(s) in gettext call, '
                   f'got {len(node.args)}', file=sys.stderr)
-            return
+            return False
 
         msg_data = {}
-        for position, arg_type in spec.items():
-            arg = node.args[position]
+        for arg_type, arg_pos in spec.items():
+            arg = node.args[arg_pos]
             if not self._is_string_const(arg):
                 print(f'*** {self.filename}:{arg.lineno}: Expected a string '
-                      f'constant for argument {position + 1}, '
+                      f'constant for argument {arg_pos + 1}, '
                       f'got {ast.unparse(arg)}', file=sys.stderr)
-                return
+                return False
             msg_data[arg_type] = arg.value
 
         lineno = node.lineno
         comments = self._extract_comments(node)
         self._add_message(lineno, **msg_data, comments=comments)
+        return True
 
     def _extract_comments(self, node):
         """Extract translator comments.
@@ -728,12 +733,25 @@ def main():
 
     # calculate all keywords
     try:
-        options.keywords = dict(parse_spec(spec) for spec in options.keywords)
+        keywords = [parse_spec(spec) for spec in options.keywords]
     except ValueError as e:
         print(e, file=sys.stderr)
         sys.exit(1)
+
+    options.keywords = defaultdict(list)
     if not no_default_keywords:
-        options.keywords |= DEFAULTKEYWORDS
+        for name, spec in DEFAULTKEYWORDS.items():
+            options.keywords[name].append(spec)
+        # options.keywords |= DEFAULTKEYWORDS
+
+    print()
+    print()
+    print()
+    print()
+    print(options.keywords)
+
+    for name, spec in keywords:
+        options.keywords[name].append(spec)
 
     # initialize list of strings to exclude
     if options.excludefilename:

@@ -526,6 +526,8 @@ def extract_from_snapshots():
         'custom_keywords.py': ('--keyword=foo', '--keyword=nfoo:1,2',
                                '--keyword=pfoo:1c,2',
                                '--keyword=npfoo:1c,2,3'),
+        'multiple_keywords.py': ('--keyword=foo:1c,2,3', '--keyword=foo:1c,2',
+                                 '--keyword=foo', '--keyword=foo:1,2'),
     }
 
     for filename, args in snapshots.items():
