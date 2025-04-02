@@ -171,9 +171,11 @@ class complete(commands.Command):
         immutable_completions = r.assume_immutable_completions
         completions_unchangable = last_is_completer and immutable_completions
         stem = r.get_stem()
+        import sys
+        print(f"> STEM: {stem}", file=sys.stderr)
         if not completions_unchangable:
             r.cmpltn_menu_choices = r.get_completions(stem)
-
+        print(f"> COMPLETIONS: {r.cmpltn_menu_choices}", file=sys.stderr)
         completions = r.cmpltn_menu_choices
         if not completions:
             r.error("no matches")

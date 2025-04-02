@@ -33,7 +33,9 @@ from dataclasses import dataclass, field
 
 import os
 from site import gethistoryfile
+import re
 import sys
+from idlelib.colorizer import prog
 from rlcompleter import Completer as RLCompleter
 
 from . import commands, historical_reader
@@ -129,7 +131,17 @@ class ReadlineAlikeReader(historical_reader.HistoricalReader, CompletingReader):
         completer_delims = self.config.completer_delims
         while p >= 0 and b[p] not in completer_delims:
             p -= 1
-        return "".join(b[p + 1 : self.pos])
+
+        stem = "".join(b[p + 1 : self.pos])
+        prefix = "".join(b[:p+1])
+
+        matches = list(re.finditer(prog, prefix))
+        if matches:
+            match = matches[-1]
+            if match.group("STRING") and match.span("STRING")[1] == len(prefix) and len(match.group("STRING")) > 1 and match.group("STRING")[-1] in {"'", '"'}:
+                return '__name__' + stem
+
+        return stem
 
     def get_completions(self, stem: str) -> list[str]:
         if len(stem) == 0 and self.more_lines is not None:
