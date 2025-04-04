@@ -7,7 +7,7 @@ import unittest
 from textwrap import dedent
 from pathlib import Path
 
-from test.support.script_helper import assert_python_ok
+from test.support.script_helper import assert_python_failure, assert_python_ok
 from test.test_tools import imports_under_tool, skip_if_missing, toolsdir
 from test.support.os_helper import temp_cwd, temp_dir
 
@@ -381,8 +381,8 @@ class Test_pygettext(unittest.TestCase):
 
     def test_pygettext_output(self):
         """Test that the pygettext output exactly matches snapshots."""
-        for input_file, output_file, output in extract_from_snapshots():
-            with self.subTest(input_file=input_file):
+        for input_files, output_file, output in extract_from_snapshots():
+            with self.subTest(input_files=input_files):
                 expected = output_file.read_text(encoding='utf-8')
                 self.assert_POT_equal(expected, output)
 
@@ -516,8 +516,17 @@ class Test_pygettext(unittest.TestCase):
                     parse_spec(spec)
                 self.assertEqual(str(cm.exception), message)
 
+    def test_no_docstrings_file_not_found(self):
+        """Test that pygettext raises an error if the file is not found."""
+        for option in ('-X {}', '--docstrings={}'):
+            with self.subTest(option=option):
+                option = option.format('nonexistent.txt')
+                _, _, stderr = assert_python_failure(self.script, option)
+                self.assertEqual(stderr, "Can't read --no-docstrings file: nonexistent.txt\n")
+
 
 def extract_from_snapshots():
+    docstring_exclude = (DATA_DIR / 'docstrings_excluded.txt').resolve()
     snapshots = {
         'messages.py': (),
         'fileloc.py': ('--docstrings',),
@@ -531,22 +540,28 @@ def extract_from_snapshots():
         'escapes.py': ('--escape', '--add-comments='),
         # Escape only ascii and let unicode pass through:
         ('escapes.py', 'ascii-escapes.pot'): ('--add-comments=',),
+        (('docstrings_included.py', 'docstrings_excluded.py'),
+         'docstrings_excluded.pot'): ('--docstrings',
+                                      f'--no-docstrings={docstring_exclude}'),
     }
 
     for filename, args in snapshots.items():
         if isinstance(filename, tuple):
             filename, output_file = filename
             output_file = DATA_DIR / output_file
-            input_file = DATA_DIR / filename
+            if not isinstance(filename, tuple):
+                filename = [filename]
+            input_files = [DATA_DIR / fname for fname in filename]
         else:
-            input_file = DATA_DIR / filename
-            output_file = input_file.with_suffix('.pot')
-        contents = input_file.read_bytes()
+            input_files = [DATA_DIR / filename]
+            output_file = (DATA_DIR / filename).with_suffix('.pot')
+        contents = [f.read_bytes() for f in input_files]
         with temp_cwd(None):
-            Path(input_file.name).write_bytes(contents)
+            for i, f in enumerate(input_files):
+                Path(f.name).write_bytes(contents[i])
             assert_python_ok('-Xutf8', Test_pygettext.script, *args,
-                             input_file.name)
-            yield (input_file, output_file,
+                             *[f.name for f in input_files])
+            yield (input_files, output_file,
                    Path('messages.pot').read_text(encoding='utf-8'))
 
 

@@ -448,8 +448,15 @@ class GettextVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _extract_docstring(self, node):
+        from pathlib import Path
+        import fnmatch
+        fnmatch.filter
+        filename = Path(self.filename).resolve()
+        print(filename)
+        print(self.options.nodocstrings)
         if (not self.options.docstrings or
-            self.options.nodocstrings.get(self.filename)):
+            any(filename.match(pat) for pat in self.options.nodocstrings)):
+            # fnmatch.filter(self.options.nodocstrings, )):
             return
 
         docstring = ast.get_docstring(node)
@@ -637,7 +644,7 @@ def main():
              'help', 'keyword=', 'no-default-keywords',
              'add-location', 'no-location', 'output=', 'output-dir=',
              'style=', 'verbose', 'version', 'width=', 'exclude-file=',
-             'docstrings', 'no-docstrings',
+             'docstrings', 'no-docstrings=',
              ])
     except getopt.error as msg:
         usage(1, msg)
@@ -659,7 +666,7 @@ def main():
         width = 78
         excludefilename = ''
         docstrings = 0
-        nodocstrings = {}
+        nodocstrings = set()
         comment_tags = set()
 
     options = Options()
@@ -712,15 +719,14 @@ def main():
         elif opt in ('-x', '--exclude-file'):
             options.excludefilename = arg
         elif opt in ('-X', '--no-docstrings'):
-            fp = open(arg)
             try:
-                while 1:
-                    line = fp.readline()
-                    if not line:
-                        break
-                    options.nodocstrings[line[:-1]] = 1
-            finally:
-                fp.close()
+                with open(arg) as fp:
+                    options.nodocstrings = set(line.strip() for line in fp.read().splitlines())
+                    options.nodocstrings.discard('')
+            except IOError:
+                print(f"Can't read --no-docstrings file: {arg}",
+                      file=sys.stderr)
+                sys.exit(1)
 
     options.comment_tags = tuple(options.comment_tags)
 
