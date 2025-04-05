@@ -68,7 +68,9 @@ def main():
             outfile = open(options.outfile, 'w', encoding='utf-8')
         with outfile:
             for obj in objs:
-                json.dump(obj, outfile, **dump_args)
+                json_str = json.dumps(obj, **dump_args)
+                outfile.write(colorize_json(json_str))
+                # json.dump(obj, outfile, **dump_args)
                 outfile.write('\n')
     except ValueError as e:
         raise SystemExit(e)
@@ -79,3 +81,34 @@ if __name__ == '__main__':
         main()
     except BrokenPipeError as exc:
         raise SystemExit(exc.errno)
+
+
+import re
+from _colorize import ANSIColors
+
+
+def colorize_json(json_str):
+    """Colorize JSON string for better readability."""
+
+    pat = re.compile(r'''
+        (?P<string>"(.*?)")     |   # String
+        (?P<number>-?[\d.Ee]+)  |   # Number
+        (?P<boolean>true|false) |   # Boolean
+        (?P<null>null)              # Null
+    ''', re.VERBOSE)
+
+    colors = {
+        'string': ANSIColors.GREEN,
+        'number': ANSIColors.YELLOW,
+        'boolean': ANSIColors.CYAN,
+        'null': ANSIColors.CYAN,
+    }
+
+    def replace(match):
+        for key in colors:
+            if match.group(key):
+                color = colors[key]
+                return f"{color}{match.group(key)}{ANSIColors.RESET}"
+        return match.group()
+
+    return re.sub(pat, replace, json_str)
