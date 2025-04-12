@@ -338,8 +338,12 @@ def parse_spec(spec):
     for arg in args.split(','):
         arg = arg.strip()
         is_context = False
+        is_argnum = False
         if arg.endswith('c'):
             is_context = True
+            arg = arg[:-1]
+        elif arg.endswith('t'):
+            is_argnum = True
             arg = arg[:-1]
 
         try:
@@ -356,7 +360,12 @@ def parse_spec(spec):
             raise ValueError(f'Invalid keyword spec {spec!r}: '
                              'duplicate positions')
 
-        if is_context:
+        if is_argnum:
+            if 'argnum' in result:
+                raise ValueError(f'Invalid keyword spec {spec!r}: '
+                                 'argnum can only appear once')
+            result['argnum'] = pos
+        elif is_context:
             if 'msgctxt' in result:
                 raise ValueError(f'Invalid keyword spec {spec!r}: '
                                  'msgctxt can only appear once')
@@ -523,6 +532,9 @@ class GettextVisitor(ast.NodeVisitor):
         Return None if the gettext call was successfully extracted,
         otherwise return an error message.
         """
+        argnum = spec.get('argnum', 0)
+        spec = spec.copy()
+        del spec['argnum']
         max_index = max(spec.values())
         has_var_positional = any(isinstance(arg, ast.Starred) for
                                  arg in node.args[:max_index+1])
@@ -533,6 +545,22 @@ class GettextVisitor(ast.NodeVisitor):
         if max_index >= len(node.args):
             return (f'Expected at least {max_index + 1} positional '
                     f'argument(s) in gettext call, got {len(node.args)}')
+
+        if argnum > 0:
+            if has_var_positional:
+                return ('Variable positional arguments are not '
+                        'compatible with argnum')
+
+            has_var_keyword = any(isinstance(kwarg, ast.Starred) for
+                                  kwarg in node.keywords)
+            if has_var_keyword:
+                return ('Variable keyword arguments are not '
+                        'compatible with argnum')
+
+            total_args = len(node.args) + len(node.keywords)
+            if argnum != total_args:
+                return (f'Expected exactly {argnum} argument(s) '
+                        f'in gettext call, got {total_args}')
 
         msg_data = {}
         for arg_type, position in spec.items():
