@@ -4527,7 +4527,17 @@ class SuggestionFormattingTestBase:
         actual = self.get_suggestion(func)
         self.assertIn("forget to import '_io'", actual)
 
+    def test_attribute_error_inside_nested_getattr2(self):
+        class WeirdDict(dict):
+            pass
 
+        ns = {}
+        globals = WeirdDict({None: None, 'bluch': 42})
+        exec("def foo(): return blich", globals, ns)
+
+        actual = self.get_suggestion(ns['foo'])
+        self.assertIn("Did you mean", actual)
+        self.assertIn("bluch", actual)
 
 class PurePythonSuggestionFormattingTests(
     PurePythonExceptionFormattingMixin,

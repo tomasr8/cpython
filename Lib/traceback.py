@@ -1527,6 +1527,7 @@ def _compute_suggestion_error(exc_value, tb, wrong_name):
             + list(frame.f_globals)
             + list(frame.f_builtins)
         )
+        d = [name for name in d if isinstance(name, str)]
 
         # Check first if we are in a method and the instance
         # has the wrong name as attribute
