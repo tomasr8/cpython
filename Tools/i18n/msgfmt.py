@@ -27,17 +27,17 @@ Options:
 
 import os
 import sys
-import ast
 import getopt
 import struct
 import array
 from email.parser import HeaderParser
+from enum import StrEnum
+from dataclasses import dataclass, field
 import codecs
+import re
+
 
 __version__ = "1.2"
-
-
-MESSAGES = {}
 
 
 def usage(code, msg=''):
@@ -47,29 +47,287 @@ def usage(code, msg=''):
     sys.exit(code)
 
 
-def add(ctxt, id, str, fuzzy):
-    "Add a non-fuzzy translation to the dictionary."
-    global MESSAGES
-    if not fuzzy and str:
-        if ctxt is None:
-            MESSAGES[id] = str
+def _key_for(msgid, msgctxt=None):
+    if msgctxt is None:
+        return msgid
+    return (msgctxt, msgid)
+
+
+def _format_key(msgid, msgctxt=None):
+    if msgctxt is None:
+        return msgid
+    else:
+        return b"%b\x04%b" % (msgctxt, msgid)
+
+
+class POSection(StrEnum):
+    COMMENT = 'comment'
+    CTXT = 'msgctxt'
+    ID = 'msgid'
+    PLURAL = 'msgid_plural'
+    STR = 'msgstr'
+
+
+def parse_po(po, filename):
+    """Parse a PO file."""
+    if po.startswith(codecs.BOM_UTF8):
+        raise ValueError(
+            f"The file {filename} starts with a UTF-8 BOM which is not "
+            "allowed in .po files.\nPlease save the file without a BOM "
+            "and try again.")
+
+    @dataclass
+    class ParserState:
+        filename: str
+        lineno: int = 0
+        # Start off assuming Latin-1, so everything decodes without failure,
+        # until we know the exact encoding
+        encoding: str = 'latin-1'
+        # Current section
+        section: POSection | None = None
+        # Current message data
+        msgid: str | None = None
+        msgid_plural: str | None = None
+        msgctxt: str | None = None
+        msgstr: str | list[str] | None = None
+        fuzzy: bool = False
+        # All parsed messages
+        messages: dict = field(default_factory=dict)
+
+        @property
+        def is_plural(self):
+            return self.msgid_plural is not None
+
+
+    state = ParserState(filename)
+    # Parse the PO file
+    for line in po.splitlines():
+        state.lineno += 1
+
+        # Skip empty lines
+        if not line.strip():
+            continue
+
+        if line.startswith(b'#'):
+            parse_comment(state, line)
+        elif line.startswith(b'msgctxt'):
+            parse_msgctxt(state, line)
+        elif line.startswith(b'msgid_plural'):
+            parse_msgid_plural(state, line)
+        elif line.startswith(b'msgid'):
+            parse_msgid(state, line)
+        elif line.startswith(b'msgstr'):
+            parse_msgstr(state, line)
         else:
-            MESSAGES[b"%b\x04%b" % (ctxt, id)] = str
+            # Line containing only a string without a keyword
+            # This will be appended to the previous section
+            parse_line(state, line)
+
+    if state.section == POSection.CTXT:
+        raise ValueError(f'{filename}:{state.lineno}: '
+                         'Missing msgid after msgctxt')
+    if state.section == POSection.ID:
+        raise ValueError(f'{filename}:{state.lineno}: '
+                         'Missing msgstr after msgid')
+    elif state.section == POSection.STR:
+        # Add last entry
+        _add_message(state)
+    return list(state.messages.values())
 
 
-def generate():
+def parse_comment(state, line):
+    if state.section not in (None, POSection.COMMENT, POSection.STR):
+        raise ValueError(f'{state.filename}:{state.lineno}: '
+                         f'Comment line not allowed after {state.section}')
+
+    if state.section == POSection.STR:
+        # Previous msgstr section is finished so we need to add the message
+        _add_message(state)
+    if line.startswith(b'#,') and b'fuzzy' in line:
+        # This is a fuzzy mark
+        state.fuzzy = True
+    state.section = POSection.COMMENT
+
+
+def parse_msgctxt(state, line):
+    if state.section not in (None, POSection.COMMENT, POSection.STR):
+        raise ValueError(f'{state.filename}:{state.lineno}: '
+                         f'msgctxt not allowed after {state.section}')
+
+    if state.section == POSection.STR:
+        # Previous msgstr section is finished so we need to add the message
+        _add_message(state)
+    line = line.decode(state.encoding).removeprefix('msgctxt')
+    state.msgctxt = parse_quoted_strings(state, line)
+    state.section = POSection.CTXT
+
+
+def parse_msgid_plural(state, line):
+    if state.section is None:
+        raise ValueError(f'{state.filename}:{state.lineno}: '
+                         'msgid_plural must be preceded by msgid')
+    if state.section != POSection.ID:
+        raise ValueError(f'{state.filename}:{state.lineno}: '
+                         f'msgid_plural not allowed after {state.section}')
+
+    line = line.decode(state.encoding).removeprefix('msgid_plural')
+    state.msgid_plural = parse_quoted_strings(state, line)
+    state.section = POSection.PLURAL
+
+
+def parse_msgid(state, line):
+    if state.section not in (None, POSection.COMMENT,
+                             POSection.STR, POSection.CTXT):
+        raise ValueError(f'{state.filename}:{state.lineno}: '
+                         f'msgid not allowed after {state.section}')
+
+    if state.section == POSection.STR:
+        # Previous msgstr section is finished so we need to add the message
+        _add_message(state)
+    line = line.decode(state.encoding).removeprefix('msgid')
+    state.msgid = parse_quoted_strings(state, line)
+    state.section = POSection.ID
+
+
+def parse_msgstr(state, line):
+    if state.section is None:
+        raise ValueError(f'{state.filename}:{state.lineno}: '
+                         'msgstr must be preceded by msgid')
+    if state.section not in (POSection.STR, POSection.ID, POSection.PLURAL):
+        raise ValueError(f'{state.filename}:{state.lineno}: '
+                         f'msgstr not allowed after {state.section}')
+
+    line = line.decode(state.encoding)
+    if match := re.match(r'^msgstr\[(\d+)\]', line):
+        # This is a plural msgstr, e.g. msgstr[0]
+        if not state.is_plural:
+            raise ValueError(f'{state.filename}:{state.lineno}: '
+                             'Missing msgid_plural section')
+        index = int(match.group(1))
+        line = line.removeprefix(match.group())
+        if state.msgstr is None:
+            state.msgstr = []
+        next_plural_index = len(state.msgstr)
+        if index != next_plural_index:
+            raise ValueError(f'{state.filename}:{state.lineno}: '
+                             'Plural form has incorrect index, found '
+                             f"'{index}' but should be '{next_plural_index}'")
+        state.msgstr.append(parse_quoted_strings(state, line))
+    else:
+        # This is a regular (non-plural) msgstr
+        if state.is_plural:
+            raise ValueError(f'{state.filename}:{state.lineno}: '
+                             'Indexed msgstr required after msgid_plural')
+        if state.section == POSection.STR:
+            raise ValueError(f'{state.filename}:{state.lineno}: '
+                             'msgstr not allowed after msgstr')
+        line = line.removeprefix('msgstr')
+        state.msgstr = parse_quoted_strings(state, line)
+    state.section = POSection.STR
+
+
+def parse_line(state, line):
+    line = parse_quoted_strings(state, line.decode(state.encoding))
+    if state.section == POSection.CTXT:
+        state.msgctxt += line
+    elif state.section == POSection.PLURAL:
+        state.msgid_plural += line
+    elif state.section == POSection.ID:
+        state.msgid += line
+    elif state.section == POSection.STR:
+        if isinstance(state.msgstr, list):
+            # This belongs to the last msgstr[N] entry
+            state.msgstr[-1] += line
+        else:
+            state.msgstr += line
+    else:
+        raise ValueError(f'{state.filename}:{state.lineno}: '
+                         f'Syntax error before:\n{line}')
+
+
+def parse_quoted_strings(state, line):
+    """
+    Parse a line containing one or more quoted PO strings separated
+    by whitespace.
+    Example: "Hello, " "world!" -> 'Hello, world!'
+    """
+    line = line.strip()
+    if not line:
+        return ''
+
+    quoted_string = r'"([^"\\]|\\.)*"'
+    # One or more quoted strings, possibly separated by whitespace
+    quoted_strings = fr'^({quoted_string}\s*)+$'
+
+    if not re.match(quoted_strings, line):
+        raise ValueError(f'{state.filename}:{state.lineno}: '
+                         f'Syntax error: {line}')
+
+    string = ''
+    for match in re.finditer(quoted_string, line):
+        part = match.group()
+        string += parse_quoted_string(state, part)
+    return string
+
+
+def parse_quoted_string(state, string):
+    """Parse a single quoted PO string."""
+    # Check if there are any disallowed escape sequences
+    # The allowed escape sequences are:
+    #   - \n, \r, \t, \\, \", \a, \b, \f, \v
+    #   - Octal escapes: \o, \oo, \ooo
+    #   - Hex escapes: \xh, \xhh, ...
+    if match := re.search(r'\\[^"\\abfnrtvx0-7]|\\x[^0-9a-fA-F]', string):
+        escape = match.group()
+        raise ValueError(f'{state.filename}:{state.lineno}: '
+                         f"Invalid escape sequence: '{escape}'")
+
+
+def _add_message(state):
+    key = _key_for(state.msgid, state.msgctxt)
+    if key in state.messages:
+        # PO files don't allow duplicate entries
+        raise ValueError(f"{state.filename}:{state.lineno}: "
+                         f"Duplicate entry: {key!r}")
+    state.messages[key] = {'msgctxt': state.msgctxt,
+                           'msgid': state.msgid,
+                           'msgid_plural': state.msgid_plural,
+                           'msgstr': state.msgstr,
+                           'fuzzy': state.fuzzy}
+    if state.msgid == "":
+        # This is the header, see whether there is an encoding declaration
+        state.encoding = _get_encoding(state.msgstr)
+    # Reset the message data
+    state.msgctxt = None
+    state.msgid = None
+    state.msgid_plural = None
+    state.msgstr = None
+    state.fuzzy = False
+
+
+def _get_encoding(msgstr):
+    """Get the encoding from the header msgstr, if provided."""
+    p = HeaderParser()
+    charset = p.parsestr(msgstr).get_content_charset()
+    return charset or 'latin-1'
+
+
+def generate(messages):
     "Return the generated output."
-    global MESSAGES
     # the keys are sorted in the .mo file
-    keys = sorted(MESSAGES.keys())
+    keys = sorted(messages.keys())
     offsets = []
     ids = strs = b''
     for id in keys:
+        message = messages[id]
+        if isinstance(id, tuple):
+            # This is a contexted message
+            id = _format_key(id[1], id[0])
         # For each string, we need size and file offset.  Each string is NUL
         # terminated; the NUL does not count into the size.
-        offsets.append((len(ids), len(id), len(strs), len(MESSAGES[id])))
+        offsets.append((len(ids), len(id), len(strs), len(message)))
         ids += id + b'\0'
-        strs += MESSAGES[id] + b'\0'
+        strs += messages[id] + b'\0'
     output = ''
     # The header is 7 32-bit unsigned integers.  We don't use hash tables, so
     # the keys start right after the index tables.
@@ -99,10 +357,6 @@ def generate():
 
 
 def make(filename, outfile):
-    ID = 1
-    STR = 2
-    CTXT = 3
-
     # Compute .mo name from .po name and arguments
     if filename.endswith('.po'):
         infile = filename
@@ -126,103 +380,9 @@ def make(filename, outfile):
         )
         sys.exit(1)
 
-    section = msgctxt = None
-    fuzzy = 0
-
-    # Start off assuming Latin-1, so everything decodes without failure,
-    # until we know the exact encoding
-    encoding = 'latin-1'
-
-    # Parse the catalog
-    lno = 0
-    for l in lines:
-        l = l.decode(encoding)
-        lno += 1
-        # If we get a comment line after a msgstr, this is a new entry
-        if l[0] == '#' and section == STR:
-            add(msgctxt, msgid, msgstr, fuzzy)
-            section = msgctxt = None
-            fuzzy = 0
-        # Record a fuzzy mark
-        if l[:2] == '#,' and 'fuzzy' in l:
-            fuzzy = 1
-        # Skip comments
-        if l[0] == '#':
-            continue
-        # Now we are in a msgid or msgctxt section, output previous section
-        if l.startswith('msgctxt'):
-            if section == STR:
-                add(msgctxt, msgid, msgstr, fuzzy)
-            section = CTXT
-            l = l[7:]
-            msgctxt = b''
-        elif l.startswith('msgid') and not l.startswith('msgid_plural'):
-            if section == STR:
-                if not msgid:
-                    # Filter out POT-Creation-Date
-                    # See issue #131852
-                    msgstr = b''.join(line for line in msgstr.splitlines(True)
-                                      if not line.startswith(b'POT-Creation-Date:'))
-
-                    # See whether there is an encoding declaration
-                    p = HeaderParser()
-                    charset = p.parsestr(msgstr.decode(encoding)).get_content_charset()
-                    if charset:
-                        encoding = charset
-                add(msgctxt, msgid, msgstr, fuzzy)
-                msgctxt = None
-            section = ID
-            l = l[5:]
-            msgid = msgstr = b''
-            is_plural = False
-        # This is a message with plural forms
-        elif l.startswith('msgid_plural'):
-            if section != ID:
-                print('msgid_plural not preceded by msgid on %s:%d' % (infile, lno),
-                      file=sys.stderr)
-                sys.exit(1)
-            l = l[12:]
-            msgid += b'\0' # separator of singular and plural
-            is_plural = True
-        # Now we are in a msgstr section
-        elif l.startswith('msgstr'):
-            section = STR
-            if l.startswith('msgstr['):
-                if not is_plural:
-                    print('plural without msgid_plural on %s:%d' % (infile, lno),
-                          file=sys.stderr)
-                    sys.exit(1)
-                l = l.split(']', 1)[1]
-                if msgstr:
-                    msgstr += b'\0' # Separator of the various plural forms
-            else:
-                if is_plural:
-                    print('indexed msgstr required for plural on  %s:%d' % (infile, lno),
-                          file=sys.stderr)
-                    sys.exit(1)
-                l = l[6:]
-        # Skip empty lines
-        l = l.strip()
-        if not l:
-            continue
-        l = ast.literal_eval(l)
-        if section == CTXT:
-            msgctxt += l.encode(encoding)
-        elif section == ID:
-            msgid += l.encode(encoding)
-        elif section == STR:
-            msgstr += l.encode(encoding)
-        else:
-            print('Syntax error on %s:%d' % (infile, lno), \
-                  'before:', file=sys.stderr)
-            print(l, file=sys.stderr)
-            sys.exit(1)
-    # Add last entry
-    if section == STR:
-        add(msgctxt, msgid, msgstr, fuzzy)
-
+    messages = parse_po(b''.join(lines), infile)
     # Compute output
-    output = generate()
+    output = generate(messages)
 
     try:
         with open(outfile,"wb") as f:
