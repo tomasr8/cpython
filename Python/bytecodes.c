@@ -4274,10 +4274,14 @@ dummy_func(
             res = PyStackRef_FromPyObjectSteal(res_o);
         }
 
-        inst(CALL_ISINSTANCE, (unused/1, unused/2, callable, self_or_null, args[oparg] -- res)) {
-            /* isinstance(o, o2) */
+        op(_GUARD_CALLABLE_ISINSTANCE, (callable, unused, unused -- callable, unused, unused)) {
             PyObject *callable_o = PyStackRef_AsPyObjectBorrow(callable);
+            PyInterpreterState *interp = tstate->interp;
+            DEOPT_IF(callable_o != interp->callable_cache.isinstance);
+        }
 
+        op(_CALL_ISINSTANCE, (callable, self_or_null, args[oparg] -- res)) {
+            /* isinstance(o, o2) */
             int total_args = oparg;
             _PyStackRef *arguments = args;
             if (!PyStackRef_IsNull(self_or_null)) {
@@ -4285,8 +4289,11 @@ dummy_func(
                 total_args++;
             }
             DEOPT_IF(total_args != 2);
-            PyInterpreterState *interp = tstate->interp;
-            DEOPT_IF(callable_o != interp->callable_cache.isinstance);
+            DEAD(callable);
+            DEAD(self_or_null);
+            DEAD(args);
+            (void)callable; // Silence compiler warnings about unused variables
+
             STAT_INC(CALL, hit);
             _PyStackRef cls_stackref = arguments[1];
             _PyStackRef inst_stackref = arguments[0];
@@ -4298,6 +4305,12 @@ dummy_func(
             assert((!PyStackRef_IsNull(res)) ^ (_PyErr_Occurred(tstate) != NULL));
             DECREF_INPUTS();
         }
+
+        macro(CALL_ISINSTANCE) =
+            unused/1 +
+            unused/2 +
+            _GUARD_CALLABLE_ISINSTANCE +
+            _CALL_ISINSTANCE;
 
         // This is secretly a super-instruction
         inst(CALL_LIST_APPEND, (unused/1, unused/2, callable, self, arg -- )) {

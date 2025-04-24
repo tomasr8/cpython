@@ -1987,6 +1987,14 @@
             break;
         }
 
+        case _GUARD_CALLABLE_ISINSTANCE: {
+            break;
+        }
+
+        case _GUARD_NOS_SELF_OR_NULL: {
+            break;
+        }
+
         case _CALL_ISINSTANCE: {
             JitOptSymbol *res;
             res = sym_new_not_null(ctx);
