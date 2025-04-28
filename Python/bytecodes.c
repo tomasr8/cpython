@@ -1129,7 +1129,14 @@ dummy_func(
             assert(oparg < 3);
             PyObject *cause = oparg == 2 ? PyStackRef_AsPyObjectSteal(args[1]) : NULL;
             PyObject *exc = oparg > 0 ? PyStackRef_AsPyObjectSteal(args[0]) : NULL;
-            int err = do_raise(tstate, exc, cause);
+            int err;
+            if (exc == PyExc_AssertionError) {
+                printf("here!\n");
+                err = do_raise2(tstate, exc, cause, tstate->interp->assert_test_value);
+            }
+            else {
+                err = do_raise(tstate, exc, cause);
+            }
             if (err) {
                 assert(oparg == 0);
                 monitor_reraise(tstate, frame, this_instr);
@@ -1454,6 +1461,10 @@ dummy_func(
             // Keep in sync with _common_constants in opcode.py
             assert(oparg < NUM_COMMON_CONSTANTS);
             value = PyStackRef_FromPyObjectNew(tstate->interp->common_consts[oparg]);
+        }
+
+        inst(STORE_ASSERT_TEST_VALUE, (value -- value)) {
+            tstate->interp->assert_test_value = PyStackRef_AsPyObjectBorrow(value);
         }
 
         inst(LOAD_BUILD_CLASS, ( -- bc)) {

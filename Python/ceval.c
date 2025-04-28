@@ -826,6 +826,8 @@ fail:
 
 
 static int do_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause);
+static int do_raise2(PyThreadState *tstate, PyObject *exc, PyObject *cause, PyObject *assert_test_value);
+
 
 PyObject *
 PyEval_EvalCode(PyObject *co, PyObject *globals, PyObject *locals)
@@ -2128,6 +2130,115 @@ raise_error:
     Py_XDECREF(cause);
     return 0;
 }
+
+
+/* Logic for the raise statement (too complicated for inlining).
+   This *consumes* a reference count to each of its arguments. */
+   static int
+   do_raise2(PyThreadState *tstate, PyObject *exc, PyObject *cause, PyObject *assert_test_value)
+   {
+       PyObject *type = NULL, *value = NULL;
+
+       if (exc == NULL) {
+           /* Reraise */
+           _PyErr_StackItem *exc_info = _PyErr_GetTopmostException(tstate);
+           exc = exc_info->exc_value;
+           if (Py_IsNone(exc) || exc == NULL) {
+               _PyErr_SetString(tstate, PyExc_RuntimeError,
+                                "No active exception to reraise");
+               return 0;
+           }
+           Py_INCREF(exc);
+           assert(PyExceptionInstance_Check(exc));
+           _PyErr_SetRaisedException(tstate, exc);
+           return 1;
+       }
+
+       /* We support the following forms of raise:
+          raise
+          raise <instance>
+          raise <type> */
+
+       if (PyExceptionClass_Check(exc)) {
+           type = exc;
+           value = _PyObject_CallNoArgs(exc);
+           if (value == NULL)
+               goto raise_error;
+
+            // set an attribute on the exception instance
+           if (assert_test_value != NULL) {
+               if (PyObject_SetAttr(value, &_Py_ID(assert_test_value), assert_test_value) < 0) {
+                   goto raise_error;
+               }
+            }
+           if (!PyExceptionInstance_Check(value)) {
+               _PyErr_Format(tstate, PyExc_TypeError,
+                             "calling %R should have returned an instance of "
+                             "BaseException, not %R",
+                             type, Py_TYPE(value));
+                goto raise_error;
+           }
+       }
+       else if (PyExceptionInstance_Check(exc)) {
+           value = exc;
+           type = PyExceptionInstance_Class(exc);
+           Py_INCREF(type);
+       }
+       else {
+           /* Not something you can raise.  You get an exception
+              anyway, just not what you specified :-) */
+           Py_DECREF(exc);
+           _PyErr_SetString(tstate, PyExc_TypeError,
+                            "exceptions must derive from BaseException");
+           goto raise_error;
+       }
+
+       assert(type != NULL);
+       assert(value != NULL);
+
+       if (cause) {
+           PyObject *fixed_cause;
+           if (PyExceptionClass_Check(cause)) {
+               fixed_cause = _PyObject_CallNoArgs(cause);
+               if (fixed_cause == NULL)
+                   goto raise_error;
+               if (!PyExceptionInstance_Check(fixed_cause)) {
+                   _PyErr_Format(tstate, PyExc_TypeError,
+                                 "calling %R should have returned an instance of "
+                                 "BaseException, not %R",
+                                 cause, Py_TYPE(fixed_cause));
+                   goto raise_error;
+               }
+               Py_DECREF(cause);
+           }
+           else if (PyExceptionInstance_Check(cause)) {
+               fixed_cause = cause;
+           }
+           else if (Py_IsNone(cause)) {
+               Py_DECREF(cause);
+               fixed_cause = NULL;
+           }
+           else {
+               _PyErr_SetString(tstate, PyExc_TypeError,
+                                "exception causes must derive from "
+                                "BaseException");
+               goto raise_error;
+           }
+           PyException_SetCause(value, fixed_cause);
+       }
+
+       _PyErr_SetObject(tstate, type, value);
+       /* _PyErr_SetObject incref's its arguments */
+       Py_DECREF(value);
+       Py_DECREF(type);
+       return 0;
+
+   raise_error:
+       Py_XDECREF(value);
+       Py_XDECREF(type);
+       Py_XDECREF(cause);
+       return 0;
+   }
 
 /* Logic for matching an exception in an except* clause (too
    complicated for inlining).

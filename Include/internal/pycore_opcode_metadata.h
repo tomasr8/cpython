@@ -440,6 +440,8 @@ int _PyOpcode_num_popped(int opcode, int oparg)  {
             return 2;
         case SET_UPDATE:
             return 2 + (oparg-1);
+        case STORE_ASSERT_TEST_VALUE:
+            return 1;
         case STORE_ATTR:
             return 2;
         case STORE_ATTR_INSTANCE_VALUE:
@@ -921,6 +923,8 @@ int _PyOpcode_num_pushed(int opcode, int oparg)  {
             return 1;
         case SET_UPDATE:
             return 1 + (oparg-1);
+        case STORE_ASSERT_TEST_VALUE:
+            return 1;
         case STORE_ATTR:
             return 0;
         case STORE_ATTR_INSTANCE_VALUE:
@@ -1258,6 +1262,7 @@ const struct opcode_metadata _PyOpcode_opcode_metadata[267] = {
     [SET_ADD] = { true, INSTR_FMT_IB, HAS_ARG_FLAG | HAS_ERROR_FLAG | HAS_ESCAPES_FLAG },
     [SET_FUNCTION_ATTRIBUTE] = { true, INSTR_FMT_IB, HAS_ARG_FLAG },
     [SET_UPDATE] = { true, INSTR_FMT_IB, HAS_ARG_FLAG | HAS_ERROR_FLAG | HAS_ESCAPES_FLAG },
+    [STORE_ASSERT_TEST_VALUE] = { true, INSTR_FMT_IX, 0 },
     [STORE_ATTR] = { true, INSTR_FMT_IBC000, HAS_ARG_FLAG | HAS_NAME_FLAG | HAS_ERROR_FLAG | HAS_ESCAPES_FLAG },
     [STORE_ATTR_INSTANCE_VALUE] = { true, INSTR_FMT_IXC000, HAS_EXIT_FLAG | HAS_ESCAPES_FLAG },
     [STORE_ATTR_SLOT] = { true, INSTR_FMT_IXC000, HAS_DEOPT_FLAG | HAS_EXIT_FLAG | HAS_ESCAPES_FLAG },
@@ -1462,6 +1467,7 @@ _PyOpcode_macro_expansion[256] = {
     [SET_ADD] = { .nuops = 1, .uops = { { _SET_ADD, OPARG_SIMPLE, 0 } } },
     [SET_FUNCTION_ATTRIBUTE] = { .nuops = 1, .uops = { { _SET_FUNCTION_ATTRIBUTE, OPARG_SIMPLE, 0 } } },
     [SET_UPDATE] = { .nuops = 1, .uops = { { _SET_UPDATE, OPARG_SIMPLE, 0 } } },
+    [STORE_ASSERT_TEST_VALUE] = { .nuops = 1, .uops = { { _STORE_ASSERT_TEST_VALUE, OPARG_SIMPLE, 0 } } },
     [STORE_ATTR] = { .nuops = 1, .uops = { { _STORE_ATTR, OPARG_SIMPLE, 3 } } },
     [STORE_ATTR_INSTANCE_VALUE] = { .nuops = 3, .uops = { { _GUARD_TYPE_VERSION_AND_LOCK, 2, 1 }, { _GUARD_DORV_NO_DICT, OPARG_SIMPLE, 3 }, { _STORE_ATTR_INSTANCE_VALUE, 1, 3 } } },
     [STORE_ATTR_SLOT] = { .nuops = 2, .uops = { { _GUARD_TYPE_VERSION, 2, 1 }, { _STORE_ATTR_SLOT, 1, 3 } } },
@@ -1702,6 +1708,7 @@ const char *_PyOpcode_OpName[267] = {
     [SET_ADD] = "SET_ADD",
     [SET_FUNCTION_ATTRIBUTE] = "SET_FUNCTION_ATTRIBUTE",
     [SET_UPDATE] = "SET_UPDATE",
+    [STORE_ASSERT_TEST_VALUE] = "STORE_ASSERT_TEST_VALUE",
     [STORE_ATTR] = "STORE_ATTR",
     [STORE_ATTR_INSTANCE_VALUE] = "STORE_ATTR_INSTANCE_VALUE",
     [STORE_ATTR_SLOT] = "STORE_ATTR_SLOT",
@@ -1958,6 +1965,7 @@ const uint8_t _PyOpcode_Deopt[256] = {
     [SET_ADD] = SET_ADD,
     [SET_FUNCTION_ATTRIBUTE] = SET_FUNCTION_ATTRIBUTE,
     [SET_UPDATE] = SET_UPDATE,
+    [STORE_ASSERT_TEST_VALUE] = STORE_ASSERT_TEST_VALUE,
     [STORE_ATTR] = STORE_ATTR,
     [STORE_ATTR_INSTANCE_VALUE] = STORE_ATTR,
     [STORE_ATTR_SLOT] = STORE_ATTR,
@@ -1995,7 +2003,6 @@ const uint8_t _PyOpcode_Deopt[256] = {
 #endif // NEED_OPCODE_METADATA
 
 #define EXTRA_CASES \
-    case 119: \
     case 120: \
     case 121: \
     case 122: \

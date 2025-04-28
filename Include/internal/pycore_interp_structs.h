@@ -921,6 +921,8 @@ struct _is {
     struct types_state types;
     struct callable_cache callable_cache;
     PyObject *common_consts[NUM_COMMON_CONSTANTS];
+    // TODO: move to the code object?
+    PyObject *assert_test_value;
     bool jit;
     struct _PyExecutorObject *executor_list_head;
     size_t trace_run_counter;

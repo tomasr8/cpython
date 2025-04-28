@@ -1968,6 +1968,7 @@ codegen_jump_if(compiler *c, location loc,
 
     /* general implementation */
     VISIT(c, expr, e);
+    ADDOP(c, LOC(e), STORE_ASSERT_TEST_VALUE);
     ADDOP(c, LOC(e), TO_BOOL);
     ADDOP_JUMP(c, LOC(e), cond ? POP_JUMP_IF_TRUE : POP_JUMP_IF_FALSE, next);
     return SUCCESS;

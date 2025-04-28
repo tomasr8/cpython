@@ -297,6 +297,7 @@ struct _Py_global_strings {
         STRUCT_FOR_ID(argv)
         STRUCT_FOR_ID(as_integer_ratio)
         STRUCT_FOR_ID(asend)
+        STRUCT_FOR_ID(assert_test_value)
         STRUCT_FOR_ID(ast)
         STRUCT_FOR_ID(athrow)
         STRUCT_FOR_ID(attribute)

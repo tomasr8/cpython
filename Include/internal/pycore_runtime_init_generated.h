@@ -804,6 +804,7 @@ extern "C" {
     INIT_ID(argv), \
     INIT_ID(as_integer_ratio), \
     INIT_ID(asend), \
+    INIT_ID(assert_test_value), \
     INIT_ID(ast), \
     INIT_ID(athrow), \
     INIT_ID(attribute), \

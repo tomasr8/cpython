@@ -169,6 +169,13 @@ class InteractiveColoredConsole(code.InteractiveConsole):
         super().showsyntaxerror(filename=filename, **kwargs)
 
     def _excepthook(self, typ, value, tb):
+        print('repl', typ, f'{value=}')
+        # print(dir(tb))
+        # print(tb.tb_frame)
+        # print(tb.tb_lasti)
+        # print(dir(tb.tb_frame))
+        # print(dir(tb.tb_lasti))
+
         import traceback
         lines = traceback.format_exception(
                 typ, value, tb,

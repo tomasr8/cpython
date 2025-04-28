@@ -153,10 +153,15 @@ def format_exception(exc, /, value=_sentinel, tb=_sentinel, limit=None, \
     these lines are concatenated and printed, exactly the same text is
     printed as does print_exception().
     """
+    # print("EXC", exc, value, tb)
     colorize = kwargs.get("colorize", False)
     value, tb = _parse_value_tb(exc, value, tb)
+    # print(value, tb)
     te = TracebackException(type(value), value, tb, limit=limit, compact=True)
-    return list(te.format(chain=chain, colorize=colorize))
+    lst = list(te.format(chain=chain, colorize=colorize))
+    if isinstance(value, AssertionError):
+        lst = lst[:-1] + [f'test value: {value.assert_test_value!r}\n'] + lst[-1:]
+    return lst
 
 
 def format_exception_only(exc, /, value=_sentinel, *, show_group=False, **kwargs):

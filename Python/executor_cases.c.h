@@ -1969,6 +1969,13 @@
             break;
         }
 
+        case _STORE_ASSERT_TEST_VALUE: {
+            _PyStackRef value;
+            value = stack_pointer[-1];
+            tstate->interp->assert_test_value = PyStackRef_AsPyObjectBorrow(value);
+            break;
+        }
+
         case _LOAD_BUILD_CLASS: {
             _PyStackRef bc;
             PyObject *bc_o;

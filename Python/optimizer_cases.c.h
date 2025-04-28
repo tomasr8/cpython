@@ -824,6 +824,10 @@
             break;
         }
 
+        case _STORE_ASSERT_TEST_VALUE: {
+            break;
+        }
+
         case _LOAD_BUILD_CLASS: {
             JitOptSymbol *bc;
             bc = sym_new_not_null(ctx);

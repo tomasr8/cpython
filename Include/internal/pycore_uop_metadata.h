@@ -123,6 +123,7 @@ const uint16_t _PyUop_Flags[MAX_UOP_ID+1] = {
     [_YIELD_VALUE] = HAS_ARG_FLAG,
     [_POP_EXCEPT] = HAS_ESCAPES_FLAG,
     [_LOAD_COMMON_CONSTANT] = HAS_ARG_FLAG,
+    [_STORE_ASSERT_TEST_VALUE] = 0,
     [_LOAD_BUILD_CLASS] = HAS_ERROR_FLAG | HAS_ESCAPES_FLAG,
     [_STORE_NAME] = HAS_ARG_FLAG | HAS_NAME_FLAG | HAS_ERROR_FLAG | HAS_ESCAPES_FLAG,
     [_DELETE_NAME] = HAS_ARG_FLAG | HAS_NAME_FLAG | HAS_ERROR_FLAG | HAS_ERROR_NO_POP_FLAG | HAS_ESCAPES_FLAG,
@@ -556,6 +557,7 @@ const char *const _PyOpcode_uop_name[MAX_UOP_ID+1] = {
     [_SET_IP] = "_SET_IP",
     [_SET_UPDATE] = "_SET_UPDATE",
     [_START_EXECUTOR] = "_START_EXECUTOR",
+    [_STORE_ASSERT_TEST_VALUE] = "_STORE_ASSERT_TEST_VALUE",
     [_STORE_ATTR] = "_STORE_ATTR",
     [_STORE_ATTR_INSTANCE_VALUE] = "_STORE_ATTR_INSTANCE_VALUE",
     [_STORE_ATTR_SLOT] = "_STORE_ATTR_SLOT",
@@ -807,6 +809,8 @@ int _PyUop_num_popped(int opcode, int oparg)
         case _POP_EXCEPT:
             return 1;
         case _LOAD_COMMON_CONSTANT:
+            return 0;
+        case _STORE_ASSERT_TEST_VALUE:
             return 0;
         case _LOAD_BUILD_CLASS:
             return 0;

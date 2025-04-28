@@ -10160,11 +10160,22 @@
             assert(oparg < 3);
             PyObject *cause = oparg == 2 ? PyStackRef_AsPyObjectSteal(args[1]) : NULL;
             PyObject *exc = oparg > 0 ? PyStackRef_AsPyObjectSteal(args[0]) : NULL;
-            stack_pointer += -oparg;
-            assert(WITHIN_STACK_BOUNDS());
-            _PyFrame_SetStackPointer(frame, stack_pointer);
-            int err = do_raise(tstate, exc, cause);
-            stack_pointer = _PyFrame_GetStackPointer(frame);
+            int err;
+            if (exc == PyExc_AssertionError) {
+                stack_pointer += -oparg;
+                assert(WITHIN_STACK_BOUNDS());
+                _PyFrame_SetStackPointer(frame, stack_pointer);
+                printf("here!\n");
+                err = do_raise2(tstate, exc, cause, tstate->interp->assert_test_value);
+                stack_pointer = _PyFrame_GetStackPointer(frame);
+            }
+            else {
+                stack_pointer += -oparg;
+                assert(WITHIN_STACK_BOUNDS());
+                _PyFrame_SetStackPointer(frame, stack_pointer);
+                err = do_raise(tstate, exc, cause);
+                stack_pointer = _PyFrame_GetStackPointer(frame);
+            }
             if (err) {
                 assert(oparg == 0);
                 _PyFrame_SetStackPointer(frame, stack_pointer);
@@ -10705,6 +10716,20 @@
             if (err < 0) {
                 JUMP_TO_LABEL(error);
             }
+            DISPATCH();
+        }
+
+        TARGET(STORE_ASSERT_TEST_VALUE) {
+            #if Py_TAIL_CALL_INTERP
+            int opcode = STORE_ASSERT_TEST_VALUE;
+            (void)(opcode);
+            #endif
+            frame->instr_ptr = next_instr;
+            next_instr += 1;
+            INSTRUCTION_STATS(STORE_ASSERT_TEST_VALUE);
+            _PyStackRef value;
+            value = stack_pointer[-1];
+            tstate->interp->assert_test_value = PyStackRef_AsPyObjectBorrow(value);
             DISPATCH();
         }
 
