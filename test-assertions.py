@@ -1,18 +1,27 @@
+# def f():
+#     class Falsy:
+#         def __bool__(self):
+#             return False
+#         def __repr__(self):
+#             return 'Falsy()'
+#     x = Falsy()
+#     assert x
+
+
 def f():
-    class Falsy:
-        def __bool__(self):
-            return False
-        def __repr__(self):
-            return 'Falsy()'
-    x = Falsy()
-    assert x
+    x = 2
+    y = 3
+    assert x == 2 and y == 42
 
-try:
-    f()
-except Exception as e:
-    exc = e
-    print(f'{exc.assert_test_value=}')
 
+# try:
+#     f()
+# except Exception as e:
+#     exc = e
+#     print(f'{exc.assert_test_value=}')
+#     raise e
+
+f()
 
 # >       assert x
 # E    assert False

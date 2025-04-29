@@ -153,7 +153,7 @@ def format_exception(exc, /, value=_sentinel, tb=_sentinel, limit=None, \
     these lines are concatenated and printed, exactly the same text is
     printed as does print_exception().
     """
-    # print("EXC", exc, value, tb)
+    print("EXC", exc, value, tb)
     colorize = kwargs.get("colorize", False)
     value, tb = _parse_value_tb(exc, value, tb)
     # print(value, tb)

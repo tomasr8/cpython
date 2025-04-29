@@ -1970,17 +1970,18 @@
         }
 
         case _STORE_ASSERT_TEST_VALUE: {
+            _PyStackRef value;
+            value = stack_pointer[-1];
             _PyFrame_SetStackPointer(frame, stack_pointer);
             PyFrameObject *frame_o = _PyFrame_GetFrameObject(frame);
             stack_pointer = _PyFrame_GetStackPointer(frame);
             if (!frame_o->assert_test_value) {
                 _PyFrame_SetStackPointer(frame, stack_pointer);
                 frame_o->assert_test_value = PyList_New(0);
-                PyList_Append(frame_o->assert_test_value, PyLong_FromLong(0));
                 stack_pointer = _PyFrame_GetStackPointer(frame);
             }
             _PyFrame_SetStackPointer(frame, stack_pointer);
-            PyList_Append(frame_o->assert_test_value, PyLong_FromLong(0));
+            PyList_Append(frame_o->assert_test_value, PyStackRef_AsPyObjectBorrow(value));
             stack_pointer = _PyFrame_GetStackPointer(frame);
             break;
         }

@@ -2117,6 +2117,7 @@ _PyFrame_New_NoTrack(PyCodeObject *code)
     f->f_lineno = 0;
     f->f_extra_locals = NULL;
     f->f_locals_cache = NULL;
+    f->assert_test_value = NULL;
     f->f_overwritten_fast_locals = NULL;
     return f;
 }
