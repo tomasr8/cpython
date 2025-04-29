@@ -34,6 +34,8 @@ struct _frame {
      * "support" for the borrowed references, ensuring that they remain valid.
      */
     PyObject *f_overwritten_fast_locals;
+
+    PyObject *assert_test_value;
     /* The frame data, if this frame object owns the frame */
     PyObject *_f_frame_data[1];
 };

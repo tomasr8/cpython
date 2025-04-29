@@ -10166,7 +10166,7 @@
                 assert(WITHIN_STACK_BOUNDS());
                 _PyFrame_SetStackPointer(frame, stack_pointer);
                 printf("here!\n");
-                err = do_raise2(tstate, exc, cause, tstate->interp->assert_test_value);
+                err = do_raise2(tstate, exc, cause, _PyFrame_GetFrameObject(frame)->assert_test_value);
                 stack_pointer = _PyFrame_GetStackPointer(frame);
             }
             else {
@@ -10727,9 +10727,18 @@
             frame->instr_ptr = next_instr;
             next_instr += 1;
             INSTRUCTION_STATS(STORE_ASSERT_TEST_VALUE);
-            _PyStackRef value;
-            value = stack_pointer[-1];
-            tstate->interp->assert_test_value = PyStackRef_AsPyObjectBorrow(value);
+            _PyFrame_SetStackPointer(frame, stack_pointer);
+            PyFrameObject *frame_o = _PyFrame_GetFrameObject(frame);
+            stack_pointer = _PyFrame_GetStackPointer(frame);
+            if (!frame_o->assert_test_value) {
+                _PyFrame_SetStackPointer(frame, stack_pointer);
+                frame_o->assert_test_value = PyList_New(0);
+                PyList_Append(frame_o->assert_test_value, PyLong_FromLong(0));
+                stack_pointer = _PyFrame_GetStackPointer(frame);
+            }
+            _PyFrame_SetStackPointer(frame, stack_pointer);
+            PyList_Append(frame_o->assert_test_value, PyLong_FromLong(0));
+            stack_pointer = _PyFrame_GetStackPointer(frame);
             DISPATCH();
         }
 

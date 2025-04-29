@@ -11,6 +11,7 @@ try:
     f()
 except Exception as e:
     exc = e
+    print(f'{exc.assert_test_value=}')
 
 
 # >       assert x
@@ -33,7 +34,7 @@ except Exception as e:
 # E     +  where False = f()
 
 
-r(const) -> v(const)
-r(var) -> v(var)
-f(fcall) -> v(fcall)
-r(binop(lhs, rhs)) -> binop(r(lhs), r(rhs))
+# r(const) -> v(const)
+# r(var) -> v(var)
+# f(fcall) -> v(fcall)
+# r(binop(lhs, rhs)) -> binop(r(lhs), r(rhs))

@@ -1132,7 +1132,7 @@ dummy_func(
             int err;
             if (exc == PyExc_AssertionError) {
                 printf("here!\n");
-                err = do_raise2(tstate, exc, cause, tstate->interp->assert_test_value);
+                err = do_raise2(tstate, exc, cause, _PyFrame_GetFrameObject(frame)->assert_test_value);
             }
             else {
                 err = do_raise(tstate, exc, cause);
@@ -1464,7 +1464,16 @@ dummy_func(
         }
 
         inst(STORE_ASSERT_TEST_VALUE, (value -- value)) {
-            tstate->interp->assert_test_value = PyStackRef_AsPyObjectBorrow(value);
+            PyFrameObject *frame_o = _PyFrame_GetFrameObject(frame);
+            if (!frame_o->assert_test_value) {
+                frame_o->assert_test_value = PyList_New(0);
+                PyList_Append(frame_o->assert_test_value, PyLong_FromLong(0));
+            }
+            // _PyList_AppendTakeRef(frame_o->assert_test_value, PyStackRef_AsPyObjectBorrow(value));
+            PyList_Append(frame_o->assert_test_value, PyLong_FromLong(0));
+            // frame_o->assert_test_value = PyStackRef_AsPyObjectBorrow(value);
+            // _PyFrame_GetFrameObject(frame)
+            // tstate->interp->assert_test_value = PyStackRef_AsPyObjectBorrow(value);
         }
 
         inst(LOAD_BUILD_CLASS, ( -- bc)) {
