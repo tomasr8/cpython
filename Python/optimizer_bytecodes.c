@@ -914,6 +914,47 @@ dummy_func(void) {
                     res = sym_new_type(ctx, &PyBool_Type);
                 }
             }
+            else if (sym_matches_type(cls_sym, &PyTuple_Type) && sym_tuple_length(cls_sym) > 0) {
+                // isinstance(obj, tuple) where tuple is a (partially) known tuple of classes
+                if (sym_has_type(inst_sym)) {
+                    // isinstance(obj, cls) where both obj and cls have known types
+                    // We can deduce either True or False
+                    int length = sym_tuple_length(cls_sym);
+                    PyTypeObject *inst_type = sym_get_type(inst_sym);
+                    bool all_types_known = true;
+                    bool is_true = false;
+
+                    for (int i = 0; i < length; i++) {
+                        JitOptSymbol *cls_item = sym_tuple_getitem(ctx, cls_sym, i);
+                        if (sym_is_const(ctx, cls_item) && sym_matches_type(cls_item, &PyType_Type)) {
+                            PyTypeObject *cls = (PyTypeObject *)sym_get_const(ctx, cls_item);
+                            if (sym_matches_type(inst_sym, cls) || PyType_IsSubtype(inst_type, cls)) {
+                                res = sym_new_const(ctx, Py_True);
+                                is_true = true;
+                                break;
+                            }
+                        }
+                        else {
+                            all_types_known = false;
+                        }
+                    }
+
+                    if (!is_true) {
+                        if (all_types_known) {
+                            // if all types in the class tuple are known and none matched
+                            // the instance type, we can deduce False
+                            res = sym_new_const(ctx, Py_False);
+                        }
+                        else {
+                            res = sym_new_type(ctx, &PyBool_Type);
+                        }
+                    }
+                }
+                else {
+                    // isinstance(obj, tuple) where obj has unknown type
+                    res = sym_new_type(ctx, &PyBool_Type);
+                }
+            }
             else {
                 // isinstance(obj, cls) where cls has unknown type
                 res = sym_new_type(ctx, &PyBool_Type);

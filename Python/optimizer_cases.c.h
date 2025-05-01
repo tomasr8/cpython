@@ -2068,6 +2068,39 @@
                         res = sym_new_type(ctx, &PyBool_Type);
                     }
                 }
+                else if (sym_matches_type(cls_sym, &PyTuple_Type) && sym_tuple_length(cls_sym) > 0) {
+                    if (sym_has_type(inst_sym)) {
+                        int length = sym_tuple_length(cls_sym);
+                        PyTypeObject *inst_type = sym_get_type(inst_sym);
+                        bool all_types_known = true;
+                        bool is_true = false;
+                        for (int i = 0; i < length; i++) {
+                            JitOptSymbol *cls_item = sym_tuple_getitem(ctx, cls_sym, i);
+                            if (sym_is_const(ctx, cls_item) && sym_matches_type(cls_item, &PyType_Type)) {
+                                PyTypeObject *cls = (PyTypeObject *)sym_get_const(ctx, cls_item);
+                                if (sym_matches_type(inst_sym, cls) || PyType_IsSubtype(inst_type, cls)) {
+                                    res = sym_new_const(ctx, Py_True);
+                                    is_true = true;
+                                    break;
+                                }
+                            }
+                            else {
+                                all_types_known = false;
+                            }
+                        }
+                        if (!is_true) {
+                            if (all_types_known) {
+                                res = sym_new_const(ctx, Py_False);
+                            }
+                            else {
+                                res = sym_new_type(ctx, &PyBool_Type);
+                            }
+                        }
+                    }
+                    else {
+                        res = sym_new_type(ctx, &PyBool_Type);
+                    }
+                }
                 else {
                     res = sym_new_type(ctx, &PyBool_Type);
                 }
