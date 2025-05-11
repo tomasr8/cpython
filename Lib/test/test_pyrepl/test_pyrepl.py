@@ -1049,17 +1049,22 @@ class TestPyReplModuleCompleter(TestCase):
             ('from foo import (a as b, c', ('foo', 'c')),
         )
         for code, parsed in cases:
-            parser = ImportParser(code)
-            actual = parser.parse()
             with self.subTest(code=code):
+                parser = ImportParser(code)
+                actual = parser.parse()
                 self.assertEqual(actual, parsed)
             # The parser should not get tripped up by any
             # other preceding statements
-            code = f'import xyz\n{code}'
-            with self.subTest(code=code):
+            more_code = f'import xyz\n{code}'
+            with self.subTest(code=more_code):
+                parser = ImportParser(more_code)
+                actual = parser.parse()
                 self.assertEqual(actual, parsed)
-            code = f'import xyz;{code}'
-            with self.subTest(code=code):
+
+            more_code = f'import xyz;{more_code}'
+            with self.subTest(code=more_code):
+                parser = ImportParser(more_code)
+                actual = parser.parse()
                 self.assertEqual(actual, parsed)
 
     def test_parse_error(self):
