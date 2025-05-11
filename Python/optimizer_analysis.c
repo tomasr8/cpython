@@ -424,7 +424,7 @@ get_code_with_logging(_PyUOpInstruction *op)
 }
 
 /* 1 for success, 0 for not ready, cannot error at the moment. */
-static int
+int
 optimize_uops(
     PyCodeObject *co,
     _PyUOpInstruction *trace,
@@ -524,7 +524,7 @@ error:
 }
 
 
-static int
+int
 remove_unneeded_uops(_PyUOpInstruction *buffer, int buffer_size)
 {
     /* Remove _SET_IP and _CHECK_VALIDITY where possible.

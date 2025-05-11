@@ -1228,6 +1228,42 @@ invalidate_executors(PyObject *self, PyObject *obj)
     Py_RETURN_NONE;
 }
 
+static PyObject *
+translate_bytecode_to_trace(PyObject *self, PyObject *func)
+{
+    _PyBloomFilter dependencies;
+    _Py_BloomFilter_Init(&dependencies);
+    _PyUOpInstruction buffer[UOP_MAX_TRACE_LENGTH];
+    PyCodeObject *code = (PyCodeObject *)PyFunction_GetCode(func);
+    _Py_CODEUNIT *instr = _PyCode_CODE(code);
+    int length = _translate_bytecode_to_trace(
+        (PyFunctionObject *)func,
+        instr,
+        buffer,
+        UOP_MAX_TRACE_LENGTH,
+        &dependencies,
+        false
+    );
+    for(int i = 0; i < length; i++) {
+        _PyUOpInstruction *uop = &buffer[i];
+        printf("%d: %d\n", i, uop->opcode);
+    }
+    int new_length = optimize_uops(
+        code,
+        buffer,
+        length,
+        0,
+        &dependencies
+    );
+    new_length = remove_unneeded_uops(buffer, new_length);
+    PyObject *tuple = PyTuple_New(2);
+    PyTuple_SET_ITEM(tuple, 0,
+        PyLong_FromLong((long)length));
+    PyTuple_SET_ITEM(tuple, 1,
+        PyLong_FromLong((long)new_length));
+    return tuple;
+}
+
 #endif
 
 static int _pending_callback(void *arg)
@@ -2348,6 +2384,7 @@ static PyMethodDef module_functions[] = {
 #ifdef _Py_TIER2
     {"add_executor_dependency", add_executor_dependency, METH_VARARGS, NULL},
     {"invalidate_executors", invalidate_executors, METH_O, NULL},
+    {"translate_bytecode_to_trace", translate_bytecode_to_trace, METH_O, NULL},
 #endif
     {"pending_threadfunc", _PyCFunction_CAST(pending_threadfunc),
      METH_VARARGS | METH_KEYWORDS},
