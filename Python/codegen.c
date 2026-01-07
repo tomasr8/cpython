@@ -6059,9 +6059,11 @@ codegen_pattern_mapping(compiler *c, pattern_ty p,
     // There's now a tuple of keys and a tuple of values on top of the subject:
     pc->on_top += 2;
     ADDOP_I(c, LOC(p), COPY, 1);
-    ADDOP_LOAD_CONST(c, LOC(p), Py_None);
-    ADDOP_I(c, LOC(p), IS_OP, 1);
-    RETURN_IF_ERROR(jump_to_fail_pop(c, LOC(p), pc, POP_JUMP_IF_FALSE));
+    // ADDOP_LOAD_CONST(c, LOC(p), Py_None);
+    // ADDOP_I(c, LOC(p), IS_OP, 1);
+    // RETURN_IF_ERROR(jump_to_fail_pop(c, LOC(p), pc, POP_JUMP_IF_FALSE));
+    RETURN_IF_ERROR(jump_to_fail_pop(c, LOC(p), pc, POP_JUMP_IF_NONE));
+
     // So far so good. Use that tuple of values on the stack to match
     // sub-patterns against:
     ADDOP_I(c, LOC(p), UNPACK_SEQUENCE, size);
