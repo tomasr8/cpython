@@ -65,6 +65,7 @@ void _PyAST_Fini(PyInterpreterState *interp)
     Py_CLEAR(state->Del_type);
     Py_CLEAR(state->Delete_type);
     Py_CLEAR(state->DictComp_type);
+    Py_CLEAR(state->DictUnpack_type);
     Py_CLEAR(state->Dict_type);
     Py_CLEAR(state->Div_singleton);
     Py_CLEAR(state->Div_type);
@@ -663,6 +664,12 @@ static const char * const List_fields[]={
 };
 static const char * const Tuple_fields[]={
     "elts",
+    "ctx",
+};
+static const char * const DictUnpack_fields[]={
+    "keys",
+    "targets",
+    "rest",
     "ctx",
 };
 static const char * const Slice_fields[]={
@@ -3597,6 +3604,77 @@ add_ast_annotations(struct ast_state *state)
         return 0;
     }
     Py_DECREF(Tuple_annotations);
+    PyObject *DictUnpack_annotations = PyDict_New();
+    if (!DictUnpack_annotations) return 0;
+    {
+        PyObject *type = state->expr_type;
+        type = Py_GenericAlias((PyObject *)&PyList_Type, type);
+        cond = type != NULL;
+        if (!cond) {
+            Py_DECREF(DictUnpack_annotations);
+            return 0;
+        }
+        cond = PyDict_SetItemString(DictUnpack_annotations, "keys", type) == 0;
+        Py_DECREF(type);
+        if (!cond) {
+            Py_DECREF(DictUnpack_annotations);
+            return 0;
+        }
+    }
+    {
+        PyObject *type = state->expr_type;
+        type = Py_GenericAlias((PyObject *)&PyList_Type, type);
+        cond = type != NULL;
+        if (!cond) {
+            Py_DECREF(DictUnpack_annotations);
+            return 0;
+        }
+        cond = PyDict_SetItemString(DictUnpack_annotations, "targets", type) ==
+                                    0;
+        Py_DECREF(type);
+        if (!cond) {
+            Py_DECREF(DictUnpack_annotations);
+            return 0;
+        }
+    }
+    {
+        PyObject *type = state->expr_type;
+        type = _Py_union_type_or(type, Py_None);
+        cond = type != NULL;
+        if (!cond) {
+            Py_DECREF(DictUnpack_annotations);
+            return 0;
+        }
+        cond = PyDict_SetItemString(DictUnpack_annotations, "rest", type) == 0;
+        Py_DECREF(type);
+        if (!cond) {
+            Py_DECREF(DictUnpack_annotations);
+            return 0;
+        }
+    }
+    {
+        PyObject *type = state->expr_context_type;
+        Py_INCREF(type);
+        cond = PyDict_SetItemString(DictUnpack_annotations, "ctx", type) == 0;
+        Py_DECREF(type);
+        if (!cond) {
+            Py_DECREF(DictUnpack_annotations);
+            return 0;
+        }
+    }
+    cond = PyObject_SetAttrString(state->DictUnpack_type, "_field_types",
+                                  DictUnpack_annotations) == 0;
+    if (!cond) {
+        Py_DECREF(DictUnpack_annotations);
+        return 0;
+    }
+    cond = PyObject_SetAttrString(state->DictUnpack_type, "__annotations__",
+                                  DictUnpack_annotations) == 0;
+    if (!cond) {
+        Py_DECREF(DictUnpack_annotations);
+        return 0;
+    }
+    Py_DECREF(DictUnpack_annotations);
     PyObject *Slice_annotations = PyDict_New();
     if (!Slice_annotations) return 0;
     {
@@ -6415,6 +6493,7 @@ init_types(void *arg)
         "     | Name(identifier id, expr_context ctx)\n"
         "     | List(expr* elts, expr_context ctx)\n"
         "     | Tuple(expr* elts, expr_context ctx)\n"
+        "     | DictUnpack(expr* keys, expr* targets, expr? rest, expr_context ctx)\n"
         "     | Slice(expr? lower, expr? upper, expr? step)");
     if (!state->expr_type) return -1;
     if (add_attributes(state, state->expr_type, expr_attributes, 4) < 0) return
@@ -6550,6 +6629,12 @@ init_types(void *arg)
                                   Tuple_fields, 2,
         "Tuple(expr* elts, expr_context ctx)");
     if (!state->Tuple_type) return -1;
+    state->DictUnpack_type = make_type(state, "DictUnpack", state->expr_type,
+                                       DictUnpack_fields, 4,
+        "DictUnpack(expr* keys, expr* targets, expr? rest, expr_context ctx)");
+    if (!state->DictUnpack_type) return -1;
+    if (PyObject_SetAttr(state->DictUnpack_type, state->rest, Py_None) == -1)
+        return -1;
     state->Slice_type = make_type(state, "Slice", state->expr_type,
                                   Slice_fields, 3,
         "Slice(expr? lower, expr? upper, expr? step)");
@@ -8449,6 +8534,32 @@ _PyAST_Tuple(asdl_expr_seq * elts, expr_context_ty ctx, int lineno, int
 }
 
 expr_ty
+_PyAST_DictUnpack(asdl_expr_seq * keys, asdl_expr_seq * targets, expr_ty rest,
+                  expr_context_ty ctx, int lineno, int col_offset, int
+                  end_lineno, int end_col_offset, PyArena *arena)
+{
+    expr_ty p;
+    if (!ctx) {
+        PyErr_SetString(PyExc_ValueError,
+                        "field 'ctx' is required for DictUnpack");
+        return NULL;
+    }
+    p = (expr_ty)_PyArena_Malloc(arena, sizeof(*p));
+    if (!p)
+        return NULL;
+    p->kind = DictUnpack_kind;
+    p->v.DictUnpack.keys = keys;
+    p->v.DictUnpack.targets = targets;
+    p->v.DictUnpack.rest = rest;
+    p->v.DictUnpack.ctx = ctx;
+    p->lineno = lineno;
+    p->col_offset = col_offset;
+    p->end_lineno = end_lineno;
+    p->end_col_offset = end_col_offset;
+    return p;
+}
+
+expr_ty
 _PyAST_Slice(expr_ty lower, expr_ty upper, expr_ty step, int lineno, int
              col_offset, int end_lineno, int end_col_offset, PyArena *arena)
 {
@@ -10029,6 +10140,33 @@ ast2obj_expr(struct ast_state *state, void* _o)
             goto failed;
         Py_DECREF(value);
         value = ast2obj_expr_context(state, o->v.Tuple.ctx);
+        if (!value) goto failed;
+        if (PyObject_SetAttr(result, state->ctx, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        break;
+    case DictUnpack_kind:
+        tp = (PyTypeObject *)state->DictUnpack_type;
+        result = PyType_GenericNew(tp, NULL, NULL);
+        if (!result) goto failed;
+        value = ast2obj_list(state, (asdl_seq*)o->v.DictUnpack.keys,
+                             ast2obj_expr);
+        if (!value) goto failed;
+        if (PyObject_SetAttr(result, state->keys, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        value = ast2obj_list(state, (asdl_seq*)o->v.DictUnpack.targets,
+                             ast2obj_expr);
+        if (!value) goto failed;
+        if (PyObject_SetAttr(result, state->targets, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        value = ast2obj_expr(state, o->v.DictUnpack.rest);
+        if (!value) goto failed;
+        if (PyObject_SetAttr(result, state->rest, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        value = ast2obj_expr_context(state, o->v.DictUnpack.ctx);
         if (!value) goto failed;
         if (PyObject_SetAttr(result, state->ctx, value) == -1)
             goto failed;
@@ -15628,6 +15766,132 @@ obj2ast_expr(struct ast_state *state, PyObject* obj, expr_ty* out, PyArena*
         if (*out == NULL) goto failed;
         return 0;
     }
+    tp = state->DictUnpack_type;
+    isinstance = PyObject_IsInstance(obj, tp);
+    if (isinstance == -1) {
+        return -1;
+    }
+    if (isinstance) {
+        asdl_expr_seq* keys;
+        asdl_expr_seq* targets;
+        expr_ty rest;
+        expr_context_ty ctx;
+
+        if (PyObject_GetOptionalAttr(obj, state->keys, &tmp) < 0) {
+            return -1;
+        }
+        if (tmp == NULL) {
+            tmp = PyList_New(0);
+            if (tmp == NULL) {
+                return -1;
+            }
+        }
+        {
+            int res;
+            Py_ssize_t len;
+            Py_ssize_t i;
+            if (!PyList_Check(tmp)) {
+                PyErr_Format(PyExc_TypeError, "DictUnpack field \"keys\" must be a list, not a %.200s", _PyType_Name(Py_TYPE(tmp)));
+                goto failed;
+            }
+            len = PyList_GET_SIZE(tmp);
+            keys = _Py_asdl_expr_seq_new(len, arena);
+            if (keys == NULL) goto failed;
+            for (i = 0; i < len; i++) {
+                expr_ty val;
+                PyObject *tmp2 = Py_NewRef(PyList_GET_ITEM(tmp, i));
+                if (_Py_EnterRecursiveCall(" while traversing 'DictUnpack' node")) {
+                    goto failed;
+                }
+                res = obj2ast_expr(state, tmp2, &val, arena);
+                _Py_LeaveRecursiveCall();
+                Py_DECREF(tmp2);
+                if (res != 0) goto failed;
+                if (len != PyList_GET_SIZE(tmp)) {
+                    PyErr_SetString(PyExc_RuntimeError, "DictUnpack field \"keys\" changed size during iteration");
+                    goto failed;
+                }
+                asdl_seq_SET(keys, i, val);
+            }
+            Py_CLEAR(tmp);
+        }
+        if (PyObject_GetOptionalAttr(obj, state->targets, &tmp) < 0) {
+            return -1;
+        }
+        if (tmp == NULL) {
+            tmp = PyList_New(0);
+            if (tmp == NULL) {
+                return -1;
+            }
+        }
+        {
+            int res;
+            Py_ssize_t len;
+            Py_ssize_t i;
+            if (!PyList_Check(tmp)) {
+                PyErr_Format(PyExc_TypeError, "DictUnpack field \"targets\" must be a list, not a %.200s", _PyType_Name(Py_TYPE(tmp)));
+                goto failed;
+            }
+            len = PyList_GET_SIZE(tmp);
+            targets = _Py_asdl_expr_seq_new(len, arena);
+            if (targets == NULL) goto failed;
+            for (i = 0; i < len; i++) {
+                expr_ty val;
+                PyObject *tmp2 = Py_NewRef(PyList_GET_ITEM(tmp, i));
+                if (_Py_EnterRecursiveCall(" while traversing 'DictUnpack' node")) {
+                    goto failed;
+                }
+                res = obj2ast_expr(state, tmp2, &val, arena);
+                _Py_LeaveRecursiveCall();
+                Py_DECREF(tmp2);
+                if (res != 0) goto failed;
+                if (len != PyList_GET_SIZE(tmp)) {
+                    PyErr_SetString(PyExc_RuntimeError, "DictUnpack field \"targets\" changed size during iteration");
+                    goto failed;
+                }
+                asdl_seq_SET(targets, i, val);
+            }
+            Py_CLEAR(tmp);
+        }
+        if (PyObject_GetOptionalAttr(obj, state->rest, &tmp) < 0) {
+            return -1;
+        }
+        if (tmp == NULL || tmp == Py_None) {
+            Py_CLEAR(tmp);
+            rest = NULL;
+        }
+        else {
+            int res;
+            if (_Py_EnterRecursiveCall(" while traversing 'DictUnpack' node")) {
+                goto failed;
+            }
+            res = obj2ast_expr(state, tmp, &rest, arena);
+            _Py_LeaveRecursiveCall();
+            if (res != 0) goto failed;
+            Py_CLEAR(tmp);
+        }
+        if (PyObject_GetOptionalAttr(obj, state->ctx, &tmp) < 0) {
+            return -1;
+        }
+        if (tmp == NULL) {
+            PyErr_SetString(PyExc_TypeError, "required field \"ctx\" missing from DictUnpack");
+            return -1;
+        }
+        else {
+            int res;
+            if (_Py_EnterRecursiveCall(" while traversing 'DictUnpack' node")) {
+                goto failed;
+            }
+            res = obj2ast_expr_context(state, tmp, &ctx, arena);
+            _Py_LeaveRecursiveCall();
+            if (res != 0) goto failed;
+            Py_CLEAR(tmp);
+        }
+        *out = _PyAST_DictUnpack(keys, targets, rest, ctx, lineno, col_offset,
+                                 end_lineno, end_col_offset, arena);
+        if (*out == NULL) goto failed;
+        return 0;
+    }
     tp = state->Slice_type;
     isinstance = PyObject_IsInstance(obj, tp);
     if (isinstance == -1) {
@@ -18193,6 +18457,9 @@ astmodule_exec(PyObject *m)
         return -1;
     }
     if (PyModule_AddObjectRef(m, "Tuple", state->Tuple_type) < 0) {
+        return -1;
+    }
+    if (PyModule_AddObjectRef(m, "DictUnpack", state->DictUnpack_type) < 0) {
         return -1;
     }
     if (PyModule_AddObjectRef(m, "Slice", state->Slice_type) < 0) {

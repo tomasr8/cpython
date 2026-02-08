@@ -330,6 +330,14 @@ _PyPegen_set_expr_context(Parser *p, expr_ty expr, expr_context_ty ctx)
         case Starred_kind:
             new = _set_starred_context(p, expr, ctx);
             break;
+        case DictUnpack_kind:
+            new = _PyAST_DictUnpack(
+                    expr->v.DictUnpack.keys,
+                    _set_seq_context(p, expr->v.DictUnpack.targets, ctx),
+                    expr->v.DictUnpack.rest ? _PyPegen_set_expr_context(p, expr->v.DictUnpack.rest, ctx) : NULL,
+                    ctx,
+                    EXTRA_EXPR(expr, expr));
+            break;
         default:
             new = expr;
     }
@@ -379,6 +387,117 @@ _PyPegen_get_values(Parser *p, asdl_seq *seq)
         asdl_seq_SET(new_seq, i, pair->value);
     }
     return new_seq;
+}
+
+/* Dict destructuring helpers */
+
+/* Shorthand: {name} -> key=Constant("name"), target=Name("name", Store) */
+KeyValuePair *
+_PyPegen_dict_unpack_shorthand(Parser *p, expr_ty name)
+{
+    assert(name->kind == Name_kind);
+    KeyValuePair *a = _PyArena_Malloc(p->arena, sizeof(KeyValuePair));
+    if (!a) {
+        return NULL;
+    }
+    a->key = _PyAST_Constant(name->v.Name.id, NULL, EXTRA_EXPR(name, name));
+    if (!a->key) {
+        return NULL;
+    }
+    a->value = _PyAST_Name(name->v.Name.id, Store, EXTRA_EXPR(name, name));
+    if (!a->value) {
+        return NULL;
+    }
+    return a;
+}
+
+/* Explicit string key: {'key': target} */
+KeyValuePair *
+_PyPegen_dict_unpack_kv(Parser *p, expr_ty string_expr, expr_ty target)
+{
+    KeyValuePair *a = _PyArena_Malloc(p->arena, sizeof(KeyValuePair));
+    if (!a) {
+        return NULL;
+    }
+    /* string_expr is a Constant from the STRING token */
+    a->key = string_expr;
+    a->value = target;
+    return a;
+}
+
+/* Name as key: {name: target} -> key=Constant("name"), target=target */
+KeyValuePair *
+_PyPegen_dict_unpack_kv_name(Parser *p, expr_ty name, expr_ty target)
+{
+    assert(name->kind == Name_kind);
+    KeyValuePair *a = _PyArena_Malloc(p->arena, sizeof(KeyValuePair));
+    if (!a) {
+        return NULL;
+    }
+    a->key = _PyAST_Constant(name->v.Name.id, NULL, EXTRA_EXPR(name, name));
+    if (!a->key) {
+        return NULL;
+    }
+    a->value = target;
+    return a;
+}
+
+/* Build a DictUnpack AST node from a sequence of KeyValuePair* */
+expr_ty
+_PyPegen_make_dict_unpack(Parser *p, asdl_seq *seq,
+                          int lineno, int col_offset,
+                          int end_lineno, int end_col_offset,
+                          PyArena *arena)
+{
+    Py_ssize_t len = asdl_seq_LEN(seq);
+    asdl_expr_seq *keys = _Py_asdl_expr_seq_new(len, arena);
+    if (!keys) {
+        return NULL;
+    }
+    asdl_expr_seq *targets = _Py_asdl_expr_seq_new(len, arena);
+    if (!targets) {
+        return NULL;
+    }
+    for (Py_ssize_t i = 0; i < len; i++) {
+        KeyValuePair *pair = asdl_seq_GET_UNTYPED(seq, i);
+        asdl_seq_SET(keys, i, pair->key);
+        asdl_seq_SET(targets, i, pair->value);
+    }
+    return _PyAST_DictUnpack(keys, targets, NULL, Store,
+                             lineno, col_offset, end_lineno, end_col_offset,
+                             arena);
+}
+
+/* Build a DictUnpack AST node with **rest from a sequence of KeyValuePair* */
+expr_ty
+_PyPegen_make_dict_unpack_rest(Parser *p, asdl_seq *seq, expr_ty rest_name,
+                               int lineno, int col_offset,
+                               int end_lineno, int end_col_offset,
+                               PyArena *arena)
+{
+    Py_ssize_t len = seq ? asdl_seq_LEN(seq) : 0;
+    asdl_expr_seq *keys = _Py_asdl_expr_seq_new(len, arena);
+    if (!keys) {
+        return NULL;
+    }
+    asdl_expr_seq *targets = _Py_asdl_expr_seq_new(len, arena);
+    if (!targets) {
+        return NULL;
+    }
+    for (Py_ssize_t i = 0; i < len; i++) {
+        KeyValuePair *pair = asdl_seq_GET_UNTYPED(seq, i);
+        asdl_seq_SET(keys, i, pair->key);
+        asdl_seq_SET(targets, i, pair->value);
+    }
+    /* rest_name is a Name expr in Load context; convert to Store */
+    expr_ty rest = _PyAST_Name(rest_name->v.Name.id, Store,
+                               EXTRA_EXPR(rest_name, rest_name));
+    if (!rest) {
+        return NULL;
+    }
+    return _PyAST_DictUnpack(keys, targets, rest, Store,
+                             lineno, col_offset, end_lineno, end_col_offset,
+                             arena);
 }
 
 /* Constructs a KeyPatternPair that is used when parsing mapping & class patterns */
@@ -1083,6 +1202,8 @@ _PyPegen_get_expr_name(expr_ty e)
             return "list";
         case Tuple_kind:
             return "tuple";
+        case DictUnpack_kind:
+            return "dict destructuring";
         case Lambda_kind:
             return "lambda";
         case Call_kind:
@@ -1221,6 +1342,17 @@ _PyPegen_get_invalid_target(expr_ty e, TARGETS_TYPE targets_type)
         case Tuple_kind:
             VISIT_CONTAINER(e, Tuple);
             return NULL;
+        case DictUnpack_kind: {
+            Py_ssize_t len = asdl_seq_LEN(e->v.DictUnpack.targets);
+            for (Py_ssize_t i = 0; i < len; i++) {
+                expr_ty other = asdl_seq_GET(e->v.DictUnpack.targets, i);
+                expr_ty child = _PyPegen_get_invalid_target(other, targets_type);
+                if (child != NULL) {
+                    return child;
+                }
+            }
+            return NULL;
+        }
         case Starred_kind:
             if (targets_type == DEL_TARGETS) {
                 return e;

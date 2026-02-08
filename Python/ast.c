@@ -239,6 +239,9 @@ validate_expr(expr_ty exp, expr_context_ty ctx)
     case Tuple_kind:
         actual_ctx = exp->v.Tuple.ctx;
         break;
+    case DictUnpack_kind:
+        actual_ctx = exp->v.DictUnpack.ctx;
+        break;
     default:
         if (ctx != Load) {
             PyErr_Format(PyExc_ValueError, "expression which can't be "
@@ -388,6 +391,19 @@ validate_expr(expr_ty exp, expr_context_ty ctx)
         break;
     case Tuple_kind:
         ret = validate_exprs(exp->v.Tuple.elts, ctx, 0);
+        break;
+    case DictUnpack_kind:
+        if (asdl_seq_LEN(exp->v.DictUnpack.keys) !=
+            asdl_seq_LEN(exp->v.DictUnpack.targets)) {
+            PyErr_SetString(PyExc_ValueError,
+                            "DictUnpack keys and targets must have equal length");
+            return 0;
+        }
+        ret = validate_exprs(exp->v.DictUnpack.keys, Load, 0) &&
+              validate_exprs(exp->v.DictUnpack.targets, Store, 0);
+        if (ret && exp->v.DictUnpack.rest) {
+            ret = validate_expr(exp->v.DictUnpack.rest, Store);
+        }
         break;
     case NamedExpr_kind:
         if (exp->v.NamedExpr.target->kind != Name_kind) {

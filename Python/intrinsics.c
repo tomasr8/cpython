@@ -254,6 +254,202 @@ make_typevar_with_constraints(PyThreadState* Py_UNUSED(ignored), PyObject *name,
     return _Py_make_typevar(name, NULL, evaluate_constraints);
 }
 
+static PyObject *
+destructure_mapping(PyThreadState* tstate, PyObject *obj, PyObject *keys_tuple)
+{
+    assert(PyTuple_Check(keys_tuple));
+    Py_ssize_t n = PyTuple_GET_SIZE(keys_tuple);
+    PyObject *result = PyTuple_New(n);
+    if (result == NULL) {
+        return NULL;
+    }
+    for (Py_ssize_t i = 0; i < n; i++) {
+        PyObject *key = PyTuple_GET_ITEM(keys_tuple, i);
+        assert(PyUnicode_Check(key));
+        /* Try __getitem__ first */
+        PyObject *value = PyObject_GetItem(obj, key);
+        if (value == NULL) {
+            if (_PyErr_ExceptionMatches(tstate, PyExc_KeyError) ||
+                _PyErr_ExceptionMatches(tstate, PyExc_TypeError)) {
+                _PyErr_Clear(tstate);
+                /* Fall back to getattr */
+                value = PyObject_GetAttr(obj, key);
+                if (value == NULL) {
+                    Py_DECREF(result);
+                    return NULL;
+                }
+            }
+            else {
+                Py_DECREF(result);
+                return NULL;
+            }
+        }
+        PyTuple_SET_ITEM(result, i, value);
+    }
+    return result;
+}
+
+static PyObject *
+destructure_mapping_rest(PyThreadState* tstate, PyObject *obj, PyObject *keys_tuple)
+{
+    assert(PyTuple_Check(keys_tuple));
+    Py_ssize_t n = PyTuple_GET_SIZE(keys_tuple);
+
+    /* First, extract the named values (same logic as destructure_mapping) */
+    PyObject **values = PyMem_Malloc((n + 1) * sizeof(PyObject *));
+    if (values == NULL) {
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    for (Py_ssize_t i = 0; i < n; i++) {
+        PyObject *key = PyTuple_GET_ITEM(keys_tuple, i);
+        assert(PyUnicode_Check(key));
+        PyObject *value = PyObject_GetItem(obj, key);
+        if (value == NULL) {
+            if (_PyErr_ExceptionMatches(tstate, PyExc_KeyError) ||
+                _PyErr_ExceptionMatches(tstate, PyExc_TypeError)) {
+                _PyErr_Clear(tstate);
+                value = PyObject_GetAttr(obj, key);
+                if (value == NULL) {
+                    goto error;
+                }
+            }
+            else {
+                goto error;
+            }
+        }
+        values[i] = value;
+    }
+
+    /* Build the rest dict */
+    PyObject *rest_dict = NULL;
+
+    /* Try dict-like: use .items() */
+    PyObject *items_method = NULL;
+    if (PyObject_GetOptionalAttr(obj, &_Py_ID(items), &items_method) < 0) {
+        goto error;
+    }
+    if (items_method != NULL) {
+        PyObject *items = PyObject_CallNoArgs(items_method);
+        Py_DECREF(items_method);
+        if (items == NULL) {
+            goto error;
+        }
+        PyObject *iter = PyObject_GetIter(items);
+        Py_DECREF(items);
+        if (iter == NULL) {
+            goto error;
+        }
+        rest_dict = PyDict_New();
+        if (rest_dict == NULL) {
+            Py_DECREF(iter);
+            goto error;
+        }
+        PyObject *item;
+        while ((item = PyIter_Next(iter)) != NULL) {
+            PyObject *k = PyTuple_GET_ITEM(item, 0);
+            PyObject *v = PyTuple_GET_ITEM(item, 1);
+            /* Check if k is in keys_tuple */
+            int found = 0;
+            for (Py_ssize_t i = 0; i < n; i++) {
+                int eq = PyObject_RichCompareBool(k, PyTuple_GET_ITEM(keys_tuple, i), Py_EQ);
+                if (eq < 0) {
+                    Py_DECREF(item);
+                    Py_DECREF(iter);
+                    Py_DECREF(rest_dict);
+                    goto error;
+                }
+                if (eq) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) {
+                if (PyDict_SetItem(rest_dict, k, v) < 0) {
+                    Py_DECREF(item);
+                    Py_DECREF(iter);
+                    Py_DECREF(rest_dict);
+                    goto error;
+                }
+            }
+            Py_DECREF(item);
+        }
+        Py_DECREF(iter);
+        if (PyErr_Occurred()) {
+            Py_DECREF(rest_dict);
+            goto error;
+        }
+    }
+    else {
+        /* Object fallback: use vars(obj) */
+        PyObject *vars_dict = PyObject_GenericGetDict(obj, NULL);
+        if (vars_dict == NULL) {
+            /* Try __dict__ attribute */
+            _PyErr_Clear(tstate);
+            vars_dict = PyObject_GetAttr(obj, &_Py_ID(__dict__));
+            if (vars_dict == NULL) {
+                goto error;
+            }
+        }
+        rest_dict = PyDict_New();
+        if (rest_dict == NULL) {
+            Py_DECREF(vars_dict);
+            goto error;
+        }
+        PyObject *dk, *dv;
+        Py_ssize_t pos = 0;
+        while (PyDict_Next(vars_dict, &pos, &dk, &dv)) {
+            /* Skip private attributes */
+            if (PyUnicode_Check(dk) && PyUnicode_READ_CHAR(dk, 0) == '_') {
+                continue;
+            }
+            /* Skip keys in keys_tuple */
+            int found = 0;
+            for (Py_ssize_t i = 0; i < n; i++) {
+                int eq = PyObject_RichCompareBool(dk, PyTuple_GET_ITEM(keys_tuple, i), Py_EQ);
+                if (eq < 0) {
+                    Py_DECREF(vars_dict);
+                    Py_DECREF(rest_dict);
+                    goto error;
+                }
+                if (eq) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) {
+                if (PyDict_SetItem(rest_dict, dk, dv) < 0) {
+                    Py_DECREF(vars_dict);
+                    Py_DECREF(rest_dict);
+                    goto error;
+                }
+            }
+        }
+        Py_DECREF(vars_dict);
+    }
+
+    /* Build result tuple: (val1, val2, ..., rest_dict) */
+    PyObject *result = PyTuple_New(n + 1);
+    if (result == NULL) {
+        Py_DECREF(rest_dict);
+        goto error;
+    }
+    for (Py_ssize_t i = 0; i < n; i++) {
+        PyTuple_SET_ITEM(result, i, values[i]);  /* steals ref */
+    }
+    PyTuple_SET_ITEM(result, n, rest_dict);  /* steals ref */
+    PyMem_Free(values);
+    return result;
+
+error:
+    for (Py_ssize_t i = 0; i < n; i++) {
+        Py_XDECREF(values[i]);
+    }
+    PyMem_Free(values);
+    return NULL;
+}
+
 const intrinsic_func2_info
 _PyIntrinsics_BinaryFunctions[] = {
     INTRINSIC_FUNC_ENTRY(INTRINSIC_2_INVALID, no_intrinsic2)
@@ -262,6 +458,8 @@ _PyIntrinsics_BinaryFunctions[] = {
     INTRINSIC_FUNC_ENTRY(INTRINSIC_TYPEVAR_WITH_CONSTRAINTS, make_typevar_with_constraints)
     INTRINSIC_FUNC_ENTRY(INTRINSIC_SET_FUNCTION_TYPE_PARAMS, _Py_set_function_type_params)
     INTRINSIC_FUNC_ENTRY(INTRINSIC_SET_TYPEPARAM_DEFAULT, _Py_set_typeparam_default)
+    INTRINSIC_FUNC_ENTRY(INTRINSIC_DESTRUCTURE, destructure_mapping)
+    INTRINSIC_FUNC_ENTRY(INTRINSIC_DESTRUCTURE_REST, destructure_mapping_rest)
 };
 
 #undef INTRINSIC_FUNC_ENTRY

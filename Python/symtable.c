@@ -2569,6 +2569,13 @@ symtable_visit_expr(struct symtable *st, expr_ty e)
     case Tuple_kind:
         VISIT_SEQ(st, expr, e->v.Tuple.elts);
         break;
+    case DictUnpack_kind:
+        VISIT_SEQ(st, expr, e->v.DictUnpack.keys);
+        VISIT_SEQ(st, expr, e->v.DictUnpack.targets);
+        if (e->v.DictUnpack.rest) {
+            VISIT(st, expr, e->v.DictUnpack.rest);
+        }
+        break;
     }
     LEAVE_RECURSIVE();
     return 1;

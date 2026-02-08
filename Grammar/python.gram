@@ -1135,6 +1135,20 @@ star_atom[expr_ty]:
     | '(' a=target_with_star_atom ')' { _PyPegen_set_expr_context(p, a, Store) }
     | '(' a=[star_targets_tuple_seq] ')' { _PyAST_Tuple(a, Store, EXTRA) }
     | '[' a=[star_targets_list_seq] ']' { _PyAST_List(a, Store, EXTRA) }
+    | '{' a=dict_unpack_fields '}' { a }
+
+dict_unpack_fields[expr_ty]:
+    | a[asdl_seq*]=','.dict_unpack_field+ ',' '**' b=NAME [','] {
+        _PyPegen_make_dict_unpack_rest(p, a, b, EXTRA) }
+    | '**' b=NAME [','] {
+        _PyPegen_make_dict_unpack_rest(p, NULL, b, EXTRA) }
+    | a[asdl_seq*]=','.dict_unpack_field+ [','] {
+        _PyPegen_make_dict_unpack(p, a, EXTRA) }
+
+dict_unpack_field[KeyValuePair*]:
+    | a=STRING ':' b=star_atom { _PyPegen_dict_unpack_kv(p, _PyPegen_constant_from_string(p, a), b) }
+    | a=NAME ':' b=star_atom { _PyPegen_dict_unpack_kv_name(p, a, b) }
+    | a=NAME { _PyPegen_dict_unpack_shorthand(p, a) }
 
 single_target[expr_ty]:
     | single_subscript_attribute_target

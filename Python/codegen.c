@@ -3497,6 +3497,53 @@ codegen_tuple(compiler *c, expr_ty e)
 }
 
 static int
+codegen_dict_unpack(compiler *c, expr_ty e)
+{
+    assert(e->kind == DictUnpack_kind);
+    assert(e->v.DictUnpack.ctx == Store);
+    location loc = LOC(e);
+    asdl_expr_seq *keys = e->v.DictUnpack.keys;
+    asdl_expr_seq *targets = e->v.DictUnpack.targets;
+    Py_ssize_t n = asdl_seq_LEN(keys);
+
+    /* Build a tuple of key strings as a constant */
+    PyObject *keys_tuple = PyTuple_New(n);
+    if (keys_tuple == NULL) {
+        return ERROR;
+    }
+    for (Py_ssize_t i = 0; i < n; i++) {
+        expr_ty key = asdl_seq_GET(keys, i);
+        assert(key->kind == Constant_kind);
+        PyTuple_SET_ITEM(keys_tuple, i, Py_NewRef(key->v.Constant.value));
+    }
+
+    /* Stack: obj is already on top */
+    /* Load keys tuple and call intrinsic */
+    expr_ty rest = e->v.DictUnpack.rest;
+    ADDOP_LOAD_CONST(c, loc, keys_tuple);
+    Py_DECREF(keys_tuple);
+    if (rest != NULL) {
+        ADDOP_I(c, loc, CALL_INTRINSIC_2, INTRINSIC_DESTRUCTURE_REST);
+        ADDOP_I(c, loc, UNPACK_SEQUENCE, n + 1);
+    }
+    else {
+        ADDOP_I(c, loc, CALL_INTRINSIC_2, INTRINSIC_DESTRUCTURE);
+        ADDOP_I(c, loc, UNPACK_SEQUENCE, n);
+    }
+
+    /* Visit each target (may recurse for nested DictUnpack) */
+    for (Py_ssize_t i = 0; i < n; i++) {
+        expr_ty target = asdl_seq_GET(targets, i);
+        VISIT(c, expr, target);
+    }
+    /* Visit rest target if present */
+    if (rest != NULL) {
+        VISIT(c, expr, rest);
+    }
+    return SUCCESS;
+}
+
+static int
 codegen_set(compiler *c, expr_ty e)
 {
     location loc = LOC(e);
@@ -5440,6 +5487,8 @@ codegen_visit_expr(compiler *c, expr_ty e)
         return codegen_list(c, e);
     case Tuple_kind:
         return codegen_tuple(c, e);
+    case DictUnpack_kind:
+        return codegen_dict_unpack(c, e);
     }
     return SUCCESS;
 }

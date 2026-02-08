@@ -931,6 +931,56 @@ append_named_expr(PyUnicodeWriter *writer, expr_ty e, int level)
 }
 
 static int
+append_ast_dict_unpack(PyUnicodeWriter *writer, expr_ty e)
+{
+    Py_ssize_t i, n;
+
+    n = asdl_seq_LEN(e->v.DictUnpack.keys);
+    APPEND_STR("{");
+
+    for (i = 0; i < n; i++) {
+        APPEND_STR_IF(i > 0, ", ");
+        expr_ty key = asdl_seq_GET(e->v.DictUnpack.keys, i);
+        expr_ty target = asdl_seq_GET(e->v.DictUnpack.targets, i);
+
+        /* Check if shorthand: key string == target name */
+        if (target->kind == Name_kind && key->kind == Constant_kind &&
+            PyUnicode_Check(key->v.Constant.value) &&
+            PyUnicode_Compare(key->v.Constant.value, target->v.Name.id) == 0) {
+            /* Shorthand: just print the name */
+            if (-1 == PyUnicodeWriter_WriteStr(writer, target->v.Name.id)) {
+                return -1;
+            }
+        }
+        else {
+            /* key: target form */
+            if (-1 == append_ast_constant(writer, key->v.Constant.value)) {
+                return -1;
+            }
+            APPEND_STR(": ");
+            if (target->kind == DictUnpack_kind) {
+                if (-1 == append_ast_dict_unpack(writer, target)) {
+                    return -1;
+                }
+            }
+            else {
+                APPEND_EXPR(target, PR_TEST);
+            }
+        }
+    }
+
+    if (e->v.DictUnpack.rest) {
+        if (n > 0) {
+            APPEND_STR(", ");
+        }
+        APPEND_STR("**");
+        APPEND_EXPR(e->v.DictUnpack.rest, PR_ATOM);
+    }
+
+    APPEND_STR_FINISH("}");
+}
+
+static int
 append_ast_expr(PyUnicodeWriter *writer, expr_ty e, int level)
 {
     switch (e->kind) {
@@ -998,6 +1048,8 @@ append_ast_expr(PyUnicodeWriter *writer, expr_ty e, int level)
         return append_ast_list(writer, e);
     case Tuple_kind:
         return append_ast_tuple(writer, e, level);
+    case DictUnpack_kind:
+        return append_ast_dict_unpack(writer, e);
     case NamedExpr_kind:
         return append_named_expr(writer, e, level);
     // No default so compiler emits a warning for unhandled cases

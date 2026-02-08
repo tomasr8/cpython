@@ -619,6 +619,13 @@ astfold_expr(expr_ty node_, PyArena *ctx_, _PyASTPreprocessState *state)
     case Tuple_kind:
         CALL_SEQ(astfold_expr, expr, node_->v.Tuple.elts);
         break;
+    case DictUnpack_kind:
+        CALL_SEQ(astfold_expr, expr, node_->v.DictUnpack.keys);
+        CALL_SEQ(astfold_expr, expr, node_->v.DictUnpack.targets);
+        if (node_->v.DictUnpack.rest) {
+            CALL(astfold_expr, expr_ty, node_->v.DictUnpack.rest);
+        }
+        break;
     case Name_kind:
         if (state->syntax_check_only) {
             break;

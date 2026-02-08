@@ -371,6 +371,13 @@ stmt_ty _PyPegen_checked_future_import(Parser *p, identifier module, asdl_alias_
 asdl_stmt_seq* _PyPegen_register_stmts(Parser *p, asdl_stmt_seq* stmts);
 stmt_ty _PyPegen_register_stmt(Parser *p, stmt_ty s);
 
+// Dict destructuring helpers
+KeyValuePair *_PyPegen_dict_unpack_shorthand(Parser *, expr_ty);
+KeyValuePair *_PyPegen_dict_unpack_kv(Parser *, expr_ty, expr_ty);
+KeyValuePair *_PyPegen_dict_unpack_kv_name(Parser *, expr_ty, expr_ty);
+expr_ty _PyPegen_make_dict_unpack(Parser *, asdl_seq *, int, int, int, int, PyArena *);
+expr_ty _PyPegen_make_dict_unpack_rest(Parser *, asdl_seq *, expr_ty, int, int, int, int, PyArena *);
+
 // Parser API
 
 Parser *_PyPegen_Parser_New(struct tok_state *, int, int, int, int *, const char*, PyArena *);
