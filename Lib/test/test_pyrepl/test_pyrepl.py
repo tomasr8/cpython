@@ -1607,7 +1607,7 @@ class TestPyReplModuleCompleter(TestCase):
                         result = completer.get_completions(code)
                         self.assertEqual(result is None, expected is None)
                         if result:
-                            compl, act = result
+                            compl, _values, act = result
                             self.assertEqual(compl, expected[0])
                             self.assertEqual(act is None, expected[1] is None)
                             if act:
@@ -1618,6 +1618,53 @@ class TestPyReplModuleCompleter(TestCase):
 
                         new_imports = sys.modules.keys() - _imported
                         self.assertSetEqual(new_imports, expected_imports)
+
+    @patch.dict(sys.modules)
+    def test_attribute_values_returned(self) -> None:
+        """ModuleCompleter returns attribute values for colorization."""
+        import collections
+        result = ModuleCompleter().get_completions("from collections import O")
+        self.assertIsNotNone(result)
+        names, values, action = result
+        self.assertEqual(names, ["OrderedDict"])
+        self.assertIs(values[0], collections.OrderedDict)
+
+    @patch.dict(sys.modules)
+    def test_colorize_import_completions(self) -> None:
+        """Import completions are colorized only when multiple matches."""
+        from _colorize import get_theme
+        from _pyrepl.fancycompleter import colorize_completions
+        from _pyrepl.completing_reader import stripcolor
+
+        theme = get_theme()
+        colorize = lambda names, values: colorize_completions(names, values, theme)
+        config = ReadlineConfig(colorize_completions=colorize)
+
+        import collections
+        reader = ReadlineAlikeReader(
+            console=FakeConsole(events=[]),
+            config=config,
+        )
+
+        # Multiple completions should be colorized (contain ANSI codes)
+        reader.buffer = list("from collections import d")
+        reader.pos = len(reader.buffer)
+        result = reader.get_module_completions()
+        self.assertIsNotNone(result)
+        names, action = result
+        self.assertTrue(len(names) > 1)
+        # Colorized names contain ANSI escape sequences
+        self.assertTrue(any(name != stripcolor(name) for name in names
+                            if name.strip()))
+
+        # Single completion should NOT be colorized
+        reader.buffer = list("from collections import Order")
+        reader.pos = len(reader.buffer)
+        result = reader.get_module_completions()
+        self.assertIsNotNone(result)
+        names, action = result
+        self.assertEqual(len(names), 1)
+        self.assertEqual(names[0], stripcolor(names[0]))
 
 
 # Audit hook used to check for stdlib modules import side-effects

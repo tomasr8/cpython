@@ -104,6 +104,7 @@ class ReadlineConfig:
     readline_completer: Completer | None = None
     completer_delims: frozenset[str] = frozenset(" \t\n`~!@#$%^&*()-=+[{]}\\|;:'\",<>/?")
     module_completer: ModuleCompleter = field(default_factory=make_default_module_completer)
+    colorize_completions: Callable[[list[str], list[object]], list[str]] | None = None
 
 @dataclass(kw_only=True)
 class ReadlineAlikeReader(historical_reader.HistoricalReader, CompletingReader):
@@ -169,8 +170,15 @@ class ReadlineAlikeReader(historical_reader.HistoricalReader, CompletingReader):
         return result, None
 
     def get_module_completions(self) -> tuple[list[str], CompletionAction | None] | None:
-        line = self.get_line()
-        return self.config.module_completer.get_completions(line)
+        from .completing_reader import stripcolor
+        line = stripcolor(self.get_line())
+        result = self.config.module_completer.get_completions(line)
+        if result is None:
+            return None
+        names, values, action = result
+        if len(names) > 1 and self.config.colorize_completions:
+            names = self.config.colorize_completions(names, values)
+        return names, action
 
     def get_trimmed_history(self, maxlength: int) -> list[str]:
         if maxlength >= 0:
@@ -609,13 +617,18 @@ def _setup(namespace: Mapping[str, Any]) -> None:
     # set up namespace in rlcompleter, which requires it to be a bona fide dict
     if not isinstance(namespace, dict):
         namespace = dict(namespace)
-    _wrapper.config.module_completer = ModuleCompleter(namespace)
     use_basic_completer = (
         not sys.flags.ignore_environment
         and os.getenv("PYTHON_BASIC_COMPLETER")
     )
     completer_cls = RLCompleter if use_basic_completer else FancyCompleter
-    _wrapper.config.readline_completer = completer_cls(namespace).complete
+    completer = completer_cls(namespace)
+    _wrapper.config.readline_completer = completer.complete
+    if getattr(completer, 'use_colors', False):
+        from .fancycompleter import colorize_completions as _colorize
+        theme = completer.theme
+        _wrapper.config.colorize_completions = lambda names, values: _colorize(names, values, theme)
+    _wrapper.config.module_completer = ModuleCompleter(namespace)
 
     # this is not really what readline.c does.  Better than nothing I guess
     import builtins

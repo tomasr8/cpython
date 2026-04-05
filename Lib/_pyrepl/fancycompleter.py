@@ -8,6 +8,41 @@ import rlcompleter
 import keyword
 import types
 
+def safe_getattr(obj, name):
+    """Get attribute value safely, avoiding properties and lazy imports."""
+    if isinstance(getattr(type(obj), name, None), property):
+        return None
+    if (isinstance(obj, types.ModuleType)
+        and isinstance(obj.__dict__.get(name), types.LazyImportType)):
+        return obj.__dict__.get(name)
+    return getattr(obj, name, None)
+
+
+def colorize_completions(names, values, theme):
+    """Colorize completion names based on their value types."""
+    matches = [_color_for_obj(i, name, obj, theme)
+               for i, (name, obj)
+               in enumerate(zip(names, values))]
+    # We add a space at the end to prevent the automatic completion of the
+    # common prefix, which is the ANSI escape sequence.
+    matches.append(' ')
+    return matches
+
+
+def _color_for_obj(i, name, value, theme):
+    t = type(value)
+    typename = t.__name__
+    # this is needed e.g. to turn method-wrapper into method_wrapper,
+    # because if we want _colorize.FancyCompleter to be "dataclassable"
+    # our keys need to be valid identifiers.
+    typename = typename.replace('-', '_').replace('.', '_')
+    color = getattr(theme.fancycompleter, typename, ANSIColors.RESET)
+    # Encode the match index into a fake escape sequence that
+    # stripcolor() can still remove once i reaches four digits.
+    N = f"\x1b[{i // 100:03d};{i % 100:02d}m"
+    return f"{N}{color}{name}{ANSIColors.RESET}"
+
+
 class Completer(rlcompleter.Completer):
     """
     When doing something like a.b.<tab>, keep the full a.b.attr completion
@@ -146,21 +181,7 @@ class Completer(rlcompleter.Completer):
                     word[:n] == attr
                     and not (noprefix and word[:n+1] == noprefix)
                 ):
-                    # Mirror rlcompleter's safeguards so completion does not
-                    # call properties or reify lazy module attributes.
-                    if isinstance(getattr(type(thisobject), word, None), property):
-                        value = None
-                    elif (
-                        isinstance(thisobject, types.ModuleType)
-                        and isinstance(
-                            thisobject.__dict__.get(word),
-                            types.LazyImportType,
-                        )
-                    ):
-                        value = thisobject.__dict__.get(word)
-                    else:
-                        value = getattr(thisobject, word, None)
-
+                    value = safe_getattr(thisobject, word)
                     names.append(word)
                     values.append(value)
             if names or not noprefix:
@@ -173,29 +194,7 @@ class Completer(rlcompleter.Completer):
         return expr, attr, names, values
 
     def colorize_matches(self, names, values):
-        matches = [self._color_for_obj(i, name, obj)
-                   for i, (name, obj)
-                   in enumerate(zip(names, values))]
-        # We add a space at the end to prevent the automatic completion of the
-        # common prefix, which is the ANSI escape sequence.
-        matches.append(' ')
-        return matches
-
-    def _color_for_obj(self, i, name, value):
-        t = type(value)
-        color = self._color_by_type(t)
-        # Encode the match index into a fake escape sequence that
-        # stripcolor() can still remove once i reaches four digits.
-        N = f"\x1b[{i // 100:03d};{i % 100:02d}m"
-        return f"{N}{color}{name}{ANSIColors.RESET}"
-
-    def _color_by_type(self, t):
-        typename = t.__name__
-        # this is needed e.g. to turn method-wrapper into method_wrapper,
-        # because if we want _colorize.FancyCompleter to be "dataclassable"
-        # our keys need to be valid identifiers.
-        typename = typename.replace('-', '_').replace('.', '_')
-        return getattr(self.theme.fancycompleter, typename, ANSIColors.RESET)
+        return colorize_completions(names, values, self.theme)
 
 
 def commonprefix(names):
